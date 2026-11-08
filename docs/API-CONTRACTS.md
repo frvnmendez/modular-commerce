@@ -20,7 +20,7 @@ Contrato **implementado** en Release 1 por `apps/commerce-api` (Fastify). Fuente
 | `POST /api/auth/sign-in/email` | `{ email, password }` | Un email no verificado recibe `403` |
 | `POST /api/auth/sign-out` | `{}` | Invalida la sesión |
 
-Límite de peticiones: 5 por minuto e IP en `sign-in` y `sign-up`. Solo se desactiva en pruebas, con `AUTH_RATE_LIMIT=off`. La IP la decide el servidor: se descartan `X-Forwarded-For` y las cabeceras similares que envía el cliente, y se usa la del socket o la del proxy de confianza (`TRUST_PROXY`). Restablecer la contraseña revoca todas las sesiones.
+Límite de peticiones: 5 por minuto e IP en `sign-in` y `sign-up`. Solo se desactiva en pruebas, con `AUTH_RATE_LIMIT=off`. La IP la decide el servidor: se descartan `X-Forwarded-For` y las cabeceras similares que envía el cliente. Se usa la IP del socket, o la que fija el servidor del panel cuando la petición llega desde él (`TRUST_PROXY`). La cadena de confianza está en `docs/DEPLOYMENT.md`. Restablecer la contraseña revoca todas las sesiones.
 
 ## Plataforma de cuentas y tiendas (`/v1`)
 

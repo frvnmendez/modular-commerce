@@ -230,7 +230,7 @@ export function buildApp(opts: AppOptions) {
     const body = z.object({ token: z.string().min(20).max(200) }).strict().parse(req.body);
     const u = user(req);
     const storeId = await withUser(u.token, async (c) =>
-      (await c.query('SELECT control.accept_invitation($1, $2) AS id', [sha256(body.token), u.email])).rows[0].id as string);
+      (await c.query('SELECT control.accept_invitation($1) AS id', [sha256(body.token)])).rows[0].id as string);
     return { storeId };
   });
 

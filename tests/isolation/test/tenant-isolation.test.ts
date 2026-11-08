@@ -4,6 +4,7 @@
  * Ejecutar también con ISOLATION_SABOTAGE=rls-off|permissive|membership: la suite debe FALLAR.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { adminClient, dropDatabase, freshDatabase, sabotage } from './fresh-db.ts';
 
 type Client = import('@mc/commerce-api/testing').Client;
@@ -187,6 +188,35 @@ describe('Capa de base de datos (lo que la API podría olvidar)', () => {
       "INSERT INTO commerce.audit_events (tenant_id, actor_user_id, action) VALUES (commerce.current_tenant(), $1, 'x')", [A.staff.id]))).rejects.toThrow(/row-level security/);
     const n = await withStore(A.staff.token, A.storeId, async (c) => (await c.query('SELECT count(*)::int n FROM control.member_directory($1)', [A.storeId])).rows[0].n);
     expect(n).toBe(0);
+  });
+  it('mc_app no puede aceptar una invitación dirigida a otra cuenta, aunque indique su email (PR#1 hallazgo 1)', async () => {
+    const { pool } = await import('@mc/db');
+    const hash = createHash('sha256').update(B.inviteToken).digest('hex');
+    const c = await pool('app').connect();
+    try {
+      await c.query('BEGIN');
+      await c.query('SELECT control.begin_session($1)', [A.owner.token]);
+      await expect(c.query('SELECT control.accept_invitation($1)', [hash])).rejects.toThrow(/INVITATION_INVALID/);
+      await c.query('ROLLBACK');
+      await c.query('BEGIN');
+      await c.query('SELECT control.begin_session($1)', [A.owner.token]);
+      // La firma antigua, que recibía el email del llamante, ya no existe.
+      await expect(c.query('SELECT control.accept_invitation($1, $2)', [hash, 'pendiente@test.local'])).rejects.toThrow(/does not exist/);
+      await c.query('ROLLBACK');
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      c.release();
+    }
+    const a = adminClient();
+    await a.connect();
+    try {
+      const r = await a.query(`SELECT (SELECT count(*)::int FROM control.store_members WHERE store_id = $1 AND user_id = $2) m,
+        (SELECT accepted_at IS NULL AND revoked_at IS NULL FROM control.invitations WHERE token_hash = $3) pending,
+        (SELECT count(*)::int FROM commerce.audit_events WHERE tenant_id = $1 AND actor_user_id = $2) audit`, [B.storeId, A.owner.id, hash]);
+      expect(r.rows[0]).toEqual({ m: 0, pending: true, audit: 0 });
+    } finally {
+      await a.end();
+    }
   });
   it('mc_app no puede escribir directamente en el plano de control ni borrar auditoría', async () => {
     const { withStore } = await import('@mc/db');

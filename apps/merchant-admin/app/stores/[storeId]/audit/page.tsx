@@ -7,7 +7,7 @@ import { Card, EmptyState, Notice } from '@/components/ui';
 type Ev = { action: string; actorUserId: string; targetType: string | null; targetId: string | null; metadata: Record<string, unknown>; at: string };
 const LABEL: Record<string, string> = {
   'store.created': 'Tienda creada', 'store.updated': 'Datos de la tienda actualizados', 'settings.capabilities_changed': 'Capacidades cambiadas',
-  'invitation.created': 'Invitación enviada', 'invitation.accepted': 'Invitación aceptada', 'member.role_changed': 'Rol cambiado', 'member.removed': 'Miembro eliminado',
+  'invitation.created': 'Invitación enviada', 'invitation.accepted': 'Invitación aceptada', 'invitation.revoked': 'Invitación revocada', 'member.role_changed': 'Rol cambiado', 'member.removed': 'Miembro eliminado',
 };
 
 export default function Audit() {

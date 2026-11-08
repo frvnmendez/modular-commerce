@@ -12,7 +12,9 @@
     "test": "turbo run test",
     "db:bootstrap": "pnpm --filter @mc/db bootstrap",
     "db:migrate": "pnpm --filter @mc/db migrate",
-    "test:isolation": "pnpm --filter @mc/isolation-tests test"
+    "test:isolation": "pnpm --filter @mc/isolation-tests test",
+    "test:e2e": "pnpm --filter @mc/e2e e2e",
+    "test:negative": "pnpm --filter @mc/isolation-tests negative"
   },
   "devDependencies": {
     "eslint": "10.14.0",

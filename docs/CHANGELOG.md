@@ -1,6 +1,7 @@
 # Changelog
 
 ## [R1] 2026-11-08 — Probado localmente
+- Revisión del PR #1: `accept_invitation` toma el email verificado de la BD (0009), la invitación se retoma tras iniciar sesión o verificar el email, cadena de confianza de IP panel → API (`server.mjs`, `TRUST_PROXY`, `PANEL_TRUST_PROXY`), E2E con Playwright en CI y controles negativos que verifican el motivo del fallo.
 - Monorepo pnpm + Turborepo, TypeScript 5.9 con ejecución nativa de Node 22, ESLint con reglas que prohíben fijar el contexto de tenant fuera de `@mc/db`.
 - Base de datos: roles separados (`mc_migrator`, `mc_app`, `mc_auth`, `mc_ops`), esquemas `control`/`commerce`/`auth`, RLS ENABLE+FORCE en toda tabla, funciones `SECURITY DEFINER` con `search_path` fijado, migraciones con checksum.
 - Identidad con Better Auth 1.7: registro con verificación de email obligatoria, cookies HttpOnly/SameSite=Lax, límite de intentos.

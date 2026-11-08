@@ -1,33 +1,7 @@
-# Suite de aislamiento — 2026-11-08T16:33:51Z, migraciones 0001–0008
+# Suite de aislamiento — 2026-11-08T20:22:37Z, migraciones 0001–0009
 == limpio
-      Tests  17 passed (17)
-== rls-off (debe fallar)
-     × cabeceras de tenant inventadas se ignoran 16ms
-     × mc_app sin contexto no ve ninguna fila de control ni de comercio 6ms
-     × dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID 4ms
-     × forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) 2ms
-     × el contexto de una transacción no sirve en la siguiente de la misma conexión 3ms
-     × auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) 20ms
-     × catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras 11ms
-⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
-      Tests  7 failed | 10 passed (17)
-== permissive (debe fallar)
-     × cabeceras de tenant inventadas se ignoran 18ms
-     × mc_app sin contexto no ve ninguna fila de control ni de comercio 4ms
-     × dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID 4ms
-     × forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) 2ms
-     × el contexto de una transacción no sirve en la siguiente de la misma conexión 3ms
-     × auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) 6ms
-     × catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras 14ms
-⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
-      Tests  7 failed | 10 passed (17)
-== membership (debe fallar)
-     × owner y staff de A reciben 404 en todos los GET de la tienda B 14ms
-     × IDs malformados, inyección y traversal en la ruta → 404 sin errores 500 15ms
-     × A no puede editar, invitar, cambiar roles ni expulsar en B (404)  8ms
-     × tras todos los ataques, la tienda B está exactamente igual 17ms
-     × mc_app sin contexto no ve ninguna fila de control ni de comercio 3ms
-     × forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) 8ms
-     × auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) 10ms
-⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
-      Tests  7 failed | 10 passed (17)
+      Tests  18 passed (18)
+== controles negativos (pnpm test:negative)
+✓ rls-off: detectado (7 fallan, 11 pasan) — cabeceras de tenant inventadas se ignoran | mc_app sin contexto no ve ninguna fila de control ni de comercio | dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID | forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) | el contexto de una transacción no sirve en la siguiente de la misma conexión | auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) | catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras
+✓ permissive: detectado (7 fallan, 11 pasan) — cabeceras de tenant inventadas se ignoran | mc_app sin contexto no ve ninguna fila de control ni de comercio | dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID | forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) | el contexto de una transacción no sirve en la siguiente de la misma conexión | auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) | catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras
+✓ membership: detectado (8 fallan, 10 pasan) — owner y staff de A reciben 404 en todos los GET de la tienda B | IDs malformados, inyección y traversal en la ruta → 404 sin errores 500 | A no puede editar, invitar, cambiar roles ni expulsar en B (404)  | tras todos los ataques, la tienda B está exactamente igual | mc_app sin contexto no ve ninguna fila de control ni de comercio | forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) | auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) | mc_app no puede aceptar una invitación dirigida a otra cuenta, aunque indique su email (PR#1 hallazgo 1)

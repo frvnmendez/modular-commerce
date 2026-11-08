@@ -30,6 +30,7 @@ function LoginForm() {
       <h1 className="text-2xl font-semibold tracking-tight">{mode === 'in' ? 'Inicia sesión' : 'Crea tu cuenta'}</h1>
       <p className="mt-1 text-sm text-muted">{mode === 'in' ? 'Accede al panel de tu tienda.' : 'Abre tu tienda en unos minutos.'}</p>
       <div className="mt-6 space-y-4">
+        {params.get('invite') === '1' && !sent && <Notice kind="info">Inicia sesión o crea una cuenta con el email al que llegó la invitación. Después la aceptaremos automáticamente.</Notice>}
         {sent && <Notice kind="success">Te hemos enviado un enlace de verificación. Ábrelo para activar tu cuenta.</Notice>}
         {error && <Notice kind="error">{error}</Notice>}
         <form action={submit} className="space-y-4">

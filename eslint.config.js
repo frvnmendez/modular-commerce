@@ -11,7 +11,7 @@ const tenantContextRules = {
 };
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/.next/**', '**/*.config.*', 'docs/**', 'poc/**'] },
+  { ignores: ['**/node_modules/**', '**/dist/**', '**/.next/**', '**/*.config.*', 'docs/**', 'poc/**', '**/playwright-report/**', '**/test-results/**'] },
   ...tseslint.configs.recommended,
   {
     files: ['**/*.ts', '**/*.tsx'],

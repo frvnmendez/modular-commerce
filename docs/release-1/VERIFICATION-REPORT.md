@@ -10,12 +10,12 @@ Este informe solo recoge lo que se ejecutó de verdad. Cada resultado indica el 
 
 | Requisito R1 (plan maestro) | Estado | Dónde |
 |---|---|---|
-| Monorepo, CI | **Validado en CI de GitHub** (run 42509084197 en el PR #1, 2026-11-08): lint, typecheck, tests 6+29+17, los tres sabotajes detectados (7 fallos cada uno), `pnpm audit` sin altos | `package.json`, `turbo.json`, `.github/workflows/ci.yml` |
+| Monorepo, CI | CI de GitHub en verde en `059f25b` (run 42509084197). Tras la revisión del PR (§5b), el CI añade la compilación del panel, el E2E y unos controles negativos más estrictos. Su resultado se anota en la descripción del PR | `package.json`, `turbo.json`, `.github/workflows/ci.yml` |
 | Autenticación con verificación de email | Probado localmente | `packages/auth`, `r1-flows.test.ts` |
 | Organizaciones y tiendas con provisionamiento transaccional | Probado localmente | `control.create_store`, `r1-flows.test.ts` |
-| RBAC owner/admin/staff, invitaciones, último owner | Probado localmente | `packages/core/src/rbac.ts`, migraciones 0001/0006–0008 |
+| RBAC owner/admin/staff, invitaciones, último owner | Probado localmente y en E2E | `packages/core/src/rbac.ts`, migraciones 0001/0006–0009 |
 | Auditoría por tienda | Probado localmente | `commerce.audit_events` |
-| Panel inicial (onboarding → capacidades → navegación) | Probado localmente en navegador | `apps/merchant-admin`, `tests/e2e/smoke.cjs`, `screenshots/` |
+| Panel inicial (onboarding → capacidades → navegación) | E2E con Playwright (local y CI) | `apps/merchant-admin`, `tests/e2e`, `screenshots/` |
 | Panel de plataforma | Probado localmente. **Desviación:** en R1 es la ruta `/platform` del panel del comerciante y no una app separada. Se separa cuando tenga funciones de escritura | `GET /v1/platform/stores` |
 | Suite de aislamiento base con control negativo | Probado localmente | `tests/isolation` |
 
@@ -32,18 +32,19 @@ Contenedor Ubuntu 24.04 efímero en la nube con:
 
 No hay daemon de Docker. Sin secretos reales: `.env` está en `.gitignore` y solo contiene contraseñas de desarrollo.
 
-## 3. Resultados (migraciones 0001–0008)
+## 3. Resultados (migraciones 0001–0009, tras la revisión del PR #1)
 
 | Comando | Resultado |
 |---|---|
 | `pnpm lint` | 0 problemas. Incluye la regla que prohíbe fijar el contexto de tenant fuera de `@mc/db` (comprobada con un fichero sonda) |
-| `pnpm typecheck` | 6/6 paquetes sin errores |
-| `pnpm test` | core 6/6 · commerce-api 29/29 · isolation 17/17 |
-| `pnpm test:isolation` con `ISOLATION_SABOTAGE=rls-off` | **7 fallos** (esperado) |
-| `pnpm test:isolation` con `ISOLATION_SABOTAGE=permissive` | **7 fallos** (esperado) |
-| `pnpm test:isolation` con `ISOLATION_SABOTAGE=membership` | **7 fallos** (esperado) |
+| `pnpm typecheck` | 7/7 paquetes sin errores |
+| `pnpm test` | core 6/6 · commerce-api 29/29 · isolation 18/18 |
+| `pnpm test:negative` (`rls-off`) | Detectado: 7 fallan y 11 pasan. Fallan las pruebas previstas de capa de BD y catálogo, sin fallos de infraestructura |
+| `pnpm test:negative` (`permissive`) | Detectado: 7 fallan y 11 pasan, por las mismas pruebas previstas |
+| `pnpm test:negative` (`membership`) | Detectado: 8 fallan y 10 pasan. Fallan las pruebas HTTP entre tiendas; las de BD fallan en cascada porque los ataques HTTP llegan a tener efecto |
+| `pnpm test:e2e` | 7/7 (Playwright, API y panel reales, límite de intentos activado) |
 | `rate-limit.test.ts` con la corrección H2 retirada a mano | 1 fallo (esperado). Demuestra que la regresión detecta el fallo |
-| `next build` del panel | Compila las 11 rutas |
+| `pnpm --filter @mc/merchant-admin build` | Compila |
 | `pnpm audit --audit-level=high` | Pasa. 1 vulnerabilidad moderada (`minimatch` vía ESLint, solo en desarrollo) |
 
 La salida de la suite y de los sabotajes está en [`isolation-sabotage.txt`](isolation-sabotage.txt).
@@ -53,9 +54,11 @@ Defensa en profundidad comprobada:
 - **Sabotaje de RLS:** las pruebas HTTP siguen pasando, porque `enter_store` bloquea el acceso, y las pruebas a nivel de BD detectan el sabotaje.
 - **Sabotaje de la pertenencia** (`store_role` devuelve owner para todo): lo detectan las pruebas HTTP.
 
-## 4. Prueba en navegador (E2E de humo)
+## 4. Pruebas en navegador (E2E)
 
-`node tests/e2e/smoke.cjs` con la API en :4000 y el panel en :3000. Recorre:
+Desde la revisión del PR #1: `pnpm test:e2e` (Playwright, `tests/e2e/specs/r1.spec.ts`). Arranca la API y el panel, y falla ante cualquier error no declarado. Escenarios: propietario de principio a fin; invitación sin sesión con cuenta nueva y verificación en otra pestaña; invitación sin sesión con usuario existente; revocación; vista móvil; límite de intentos a través del panel; cadena de confianza con balanceador. Ver [`PR1-REVIEW.md`](PR1-REVIEW.md).
+
+Antes (histórico, sustituido): `node tests/e2e/smoke.cjs` con la API en :4000 y el panel en :3000. Recorría:
 
 1. Registro.
 2. Verificación de email con el enlace del log.
@@ -73,6 +76,10 @@ Esta prueba encontró y corrigió tres defectos:
 - Los enlaces de verificación apuntaban a la API y no al panel.
 - El patrón HTML del slug era inválido en el modo `v` de las expresiones regulares.
 - Se ofrecía "Quitar" al último owner.
+
+## 5b. Revisión del PR #1
+
+Cuatro hallazgos, todos confirmados y corregidos: aceptación de invitaciones con el email de la BD, continuación de la invitación tras el login, límite de intentos detrás del proxy y E2E estricto en CI. Detalle, reproducción y pruebas en [`PR1-REVIEW.md`](PR1-REVIEW.md).
 
 ## 5. Revisión independiente
 

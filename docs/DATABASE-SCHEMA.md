@@ -49,7 +49,7 @@ Ninguno es superusuario. La suite de aislamiento comprueba estos atributos en el
 | `update_store(store, name, country, currency)` | owner/admin | Auditado (`store.updated`) |
 | `create_invitation(id, store, email, role, token_hash, ttl)` | owner (cualquier rol), admin (solo staff) | Auditado |
 | `begin_session(token)` | `mc_app`, `mc_ops` | Abre el contexto si la sesión es válida; `NO_USER_CONTEXT` |
-| `accept_invitation(token_hash, email)` | invitado con el mismo email | Un solo uso, no caducada ni revocada, tienda activa y quien invitó conserva el permiso; `INVITATION_INVALID` (404) |
+| `accept_invitation(token_hash)` | invitado: el email verificado se lee de `auth."user"` con `current_user_id()`, nunca del llamante | Un solo uso, no caducada ni revocada, tienda activa y quien invitó conserva el permiso; `INVITATION_INVALID` (404) |
 | `revoke_invitation(store, id)` | owner; admin solo invitaciones de staff | Auditado (`invitation.revoked`) |
 | `set_member_role(store, user, role)` | owner | Bloquea la tienda (`FOR UPDATE`) y protege al último owner (`LAST_OWNER`, 409); auditado |
 | `remove_member(store, user)` | owner; admin sobre staff; uno mismo | Bloquea la tienda y protege al último owner; auditado |
@@ -79,6 +79,7 @@ Tablas de Better Auth 1.7 (`user`, `session`, `account`, `verification`). Solo `
 | `0005_fix_accept_invitation_citext.sql` | `accept_invitation` con `public` en `search_path` para el operador de `citext` |
 | `0007_red_team_r1_pass2.sql` | Políticas con `(SELECT current_tenant())` (InitPlan); trigger que revoca invitaciones de quien pierde el permiso |
 | `0008_fix_revoke_orphan_null.sql` | Corrige el trigger en `DELETE` (comparación con NULL) |
+| `0009_accept_invitation_db_email.sql` | `accept_invitation` deja de recibir el email del llamante (revisión del PR #1) |
 | `0006_red_team_r1.sql` | Correcciones del Red Team: `request_context` y `begin_session`, bloqueos del último owner, `revoke_invitation`, actor de auditoría, directorio restringido |
 
 Las migraciones aplicadas se registran en `public.schema_migrations` con checksum; editar una ya aplicada hace fallar `migrate`.

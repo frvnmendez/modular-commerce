@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { api, ApiError, humanError, type Me } from '@/lib/api';
 import { StoreContext, type NavItem, type Store } from '@/lib/store-context';
 import { EmptyState } from '@/components/ui';
+import { clearPendingInvite } from '@/lib/pending-invite';
 
 const ROLE_LABEL = { owner: 'Propietario', admin: 'Administrador', staff: 'Personal' } as const;
 
@@ -68,6 +69,7 @@ export default function StoreLayout({ children, params }: { children: React.Reac
               <span className="hidden sm:inline text-muted">{me.user.name} · {ROLE_LABEL[store.role]}</span>
               <button className="text-muted hover:text-text" onClick={async () => {
                 await fetch('/api/auth/sign-out', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+                clearPendingInvite();
                 router.replace('/login');
               }}>Salir</button>
             </div>

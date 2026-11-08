@@ -19,7 +19,7 @@ Plataforma SaaS de comercio electrónico multi-tenant, modular y asistida por IA
 | `apps/commerce-api` | API Fastify (`/v1/*`, `/api/auth/*`) |
 | `apps/merchant-admin` | Panel del comerciante (Next.js) |
 | `tests/isolation` | Ataques entre tiendas sobre una BD desechable, con controles negativos |
-| `tests/e2e` | Prueba de humo en navegador (fuera de CI) |
+| `tests/e2e` | E2E con Playwright (API y panel reales; también en CI) |
 | `poc/` | PoCs de Release 0 |
 
 ## Arrancar en local
@@ -32,7 +32,7 @@ pnpm install
 set -a; . ./.env; set +a
 pnpm db:bootstrap && pnpm db:migrate   # crea roles y BD, aplica migraciones
 node apps/commerce-api/src/server.ts          # API en :4000 (los emails de verificación se imprimen en el log)
-pnpm --filter @mc/merchant-admin build && pnpm --filter @mc/merchant-admin start   # panel en :3000
+pnpm --filter @mc/merchant-admin build && pnpm --filter @mc/merchant-admin start   # panel en :3000 (server.mjs)
 ```
 
 Abre http://localhost:3000 (usa `localhost`, no `127.0.0.1`: el Origin debe estar en `ALLOWED_ORIGINS`).
@@ -43,5 +43,6 @@ Abre http://localhost:3000 (usa `localhost`, no `127.0.0.1`: el Origin debe esta
 pnpm lint && pnpm typecheck
 AUTH_RATE_LIMIT=off pnpm test                  # core + API
 pnpm test:isolation                            # aislamiento (BD desechable)
-ISOLATION_SABOTAGE=rls-off pnpm test:isolation # debe FALLAR (también permissive y membership)
+pnpm test:negative                             # cada sabotaje debe hacer fallar la suite por la razón prevista
+pnpm --filter @mc/merchant-admin build && pnpm test:e2e   # E2E (Playwright; arranca API y panel)
 ```
