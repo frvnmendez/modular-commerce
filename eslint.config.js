@@ -25,4 +25,5 @@ export default tseslint.config(
   { files: ['packages/db/src/**'], rules: { 'no-restricted-syntax': 'off' } },
   // Los tests de sabotaje modifican la BD deliberadamente.
   { files: ['tests/**', '**/test/**'], rules: { 'no-restricted-syntax': 'off', '@typescript-eslint/no-explicit-any': 'off' } },
+  { files: ['**/*.cjs'], languageOptions: { sourceType: 'commonjs', globals: { require: 'readonly', process: 'readonly', console: 'readonly', setTimeout: 'readonly', URL: 'readonly', document: 'readonly', window: 'readonly' } }, rules: { '@typescript-eslint/no-require-imports': 'off' } },
 );

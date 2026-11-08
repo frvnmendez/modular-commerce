@@ -61,7 +61,7 @@ export default function Onboarding() {
         <Card title="Tu tienda">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Nombre de la tienda"><Input required minLength={2} maxLength={80} value={name} onChange={(e) => { setName(e.target.value); setSlug(slugify(e.target.value)); }} /></Field>
-            <Field label="Dirección" hint={`${slug || 'mi-tienda'}.plataforma.com`}><Input required pattern="[a-z0-9][a-z0-9-]{1,46}[a-z0-9]" value={slug} onChange={(e) => setSlug(e.target.value)} /></Field>
+            <Field label="Dirección" hint={`${slug || 'mi-tienda'}.plataforma.com`}><Input required pattern="[a-z0-9][a-z0-9\-]{1,46}[a-z0-9]" value={slug} onChange={(e) => setSlug(e.target.value)} /></Field>
             <Field label="Empresa u organización" hint="Puede tener varias tiendas."><Input name="org" placeholder={name || 'Mi empresa'} /></Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="País"><Select name="country" defaultValue="ES">{['ES', 'MX', 'AR', 'CO', 'CL', 'PE', 'PT', 'FR', 'US'].map((c) => <option key={c}>{c}</option>)}</Select></Field>

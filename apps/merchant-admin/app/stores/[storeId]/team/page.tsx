@@ -16,6 +16,8 @@ export default function Team() {
   const [link, setLink] = useState<string | null>(null);
   const canInvite = store.permissions.includes('members:invite');
   const canManage = store.permissions.includes('members:manage');
+  const owners = members.filter((x) => x.role === 'owner').length;
+  const isLastOwner = (m: Member) => m.role === 'owner' && owners <= 1;
 
   const load = useCallback(() => {
     api<{ members: Member[]; pendingInvitations: Invitation[] }>(`/v1/stores/${store.id}/members`)
@@ -56,12 +58,12 @@ export default function Team() {
             <li key={m.userId} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div className="min-w-0"><p className="truncate text-sm font-medium">{m.name}</p><p className="truncate text-xs text-muted">{m.email}</p></div>
               <div className="flex items-center gap-2">
-                {canManage ? (
+                {canManage && !isLastOwner(m) ? (
                   <Select aria-label={`Rol de ${m.name}`} value={m.role} onChange={(e) => change(m.userId, e.target.value)} className="w-40">
                     {Object.entries(ROLE).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </Select>
                 ) : <span className="text-sm text-muted">{ROLE[m.role]}</span>}
-                {(canManage || (store.role === 'admin' && m.role === 'staff')) && <Button variant="danger" onClick={() => remove(m)}>Quitar</Button>}
+                {!isLastOwner(m) && (canManage || (store.role === 'admin' && m.role === 'staff')) && <Button variant="danger" onClick={() => remove(m)}>Quitar</Button>}
               </div>
             </li>
           ))}

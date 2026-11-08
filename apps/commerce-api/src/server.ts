@@ -1,7 +1,7 @@
 import { createAuth, type MailMessage } from '@mc/auth';
 import { buildApp } from './app.ts';
 
-const baseURL = process.env.AUTH_BASE_URL ?? 'http://localhost:4000';
+const baseURL = process.env.AUTH_BASE_URL ?? 'http://localhost:3000';
 const secret = process.env.AUTH_SECRET;
 if (!secret || secret.length < 32) throw new Error('AUTH_SECRET debe tener al menos 32 caracteres');
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000').split(',');
