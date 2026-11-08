@@ -20,7 +20,7 @@ Contrato **implementado** en Release 1 por `apps/commerce-api` (Fastify). Fuente
 | `POST /api/auth/sign-in/email` | `{ email, password }` | Un email no verificado recibe `403` |
 | `POST /api/auth/sign-out` | `{}` | Invalida la sesión |
 
-Límite de peticiones: 5 por minuto en `sign-in` y `sign-up`. Solo se desactiva en pruebas, con `AUTH_RATE_LIMIT=off`.
+Límite de peticiones: 5 por minuto e IP en `sign-in` y `sign-up`. Solo se desactiva en pruebas, con `AUTH_RATE_LIMIT=off`. La IP la decide el servidor: se descartan `X-Forwarded-For` y las cabeceras similares que envía el cliente, y se usa la del socket o la del proxy de confianza (`TRUST_PROXY`). Restablecer la contraseña revoca todas las sesiones.
 
 ## Plataforma de cuentas y tiendas (`/v1`)
 
@@ -32,8 +32,9 @@ Límite de peticiones: 5 por minuto en `sign-in` y `sign-up`. Solo se desactiva 
 | `GET /v1/stores/:storeId` | miembro | — | `{ id, orgId, name, slug, country, currency, status, cell, businessProfile, capabilities, role, permissions[] }` |
 | `PATCH /v1/stores/:storeId` | `settings:write` (owner, admin) | `{ name?, country?, currency?, capabilities? }` | `{ ok: true }` · auditado |
 | `GET /v1/stores/:storeId/navigation` | miembro | — | `{ items[{id,label,path}] }`: capacidades ∩ permisos |
-| `GET /v1/stores/:storeId/members` | `members:read` (owner, admin) | — | `{ members[{userId,name,email,role}], pendingInvitations[{id,email,role,expiresAt}] }` |
+| `GET /v1/stores/:storeId/members` | `members:read` (owner, admin; también en la BD) | — | `{ members[{userId,name,email,role}], pendingInvitations[{id,email,role,expiresAt}] }` |
 | `POST /v1/stores/:storeId/invitations` | `members:invite`. El admin solo invita a `staff` | `{ email, role: admin\|staff }` | `201 { id, token }`. El token se devuelve **una sola vez** y en la BD solo queda su sha256. Caduca a los 7 días |
+| `DELETE /v1/stores/:storeId/invitations/:invitationId` | owner; admin solo invitaciones de staff | — | `204` · auditado (`invitation.revoked`) |
 | `POST /v1/invitations/accept` | sesión con el **mismo email** de la invitación | `{ token }` | `{ storeId }` · `404` si ya se usó, si caducó, si se revocó o si el email no coincide |
 | `PATCH /v1/stores/:storeId/members/:userId` | `members:manage` (owner) | `{ role: owner\|admin\|staff }` | `{ ok: true }` · `409` (`detail: LAST_OWNER`) |
 | `DELETE /v1/stores/:storeId/members/:userId` | owner; admin sobre staff; uno mismo | — | `204` · `409` (`detail: LAST_OWNER`) · el acceso se pierde en el acto |
@@ -57,7 +58,7 @@ De él se derivan las capacidades (`capabilitiesFor`) y los módulos recomendado
 
 ### Acciones de auditoría (R1)
 
-`store.created`, `store.updated`, `settings.capabilities_changed`, `invitation.created`, `invitation.accepted`, `member.role_changed`, `member.removed`.
+`store.created`, `store.updated`, `settings.capabilities_changed`, `invitation.created`, `invitation.accepted`, `invitation.revoked`, `member.role_changed`, `member.removed`.
 
 ## No incluido en R1
 

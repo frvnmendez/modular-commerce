@@ -1,32 +1,33 @@
+# Suite de aislamiento — 2026-11-08T16:33:51Z, migraciones 0001–0008
 == limpio
       Tests  17 passed (17)
-== rls-off
-     × cabeceras de tenant inventadas se ignoran 15ms
-     × mc_app sin contexto no ve ninguna fila de control ni de comercio 4ms
-     × dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID 3ms
-     × forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) 2ms
-     × el contexto de una transacción no sirve en la siguiente de la misma conexión 2ms
-     × auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) 5ms
-     × catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras 9ms
-⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
-      Tests  7 failed | 10 passed (17)
-== permissive
-     × cabeceras de tenant inventadas se ignoran 13ms
-     × mc_app sin contexto no ve ninguna fila de control ni de comercio 4ms
+== rls-off (debe fallar)
+     × cabeceras de tenant inventadas se ignoran 16ms
+     × mc_app sin contexto no ve ninguna fila de control ni de comercio 6ms
      × dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID 4ms
      × forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) 2ms
-     × el contexto de una transacción no sirve en la siguiente de la misma conexión 2ms
-     × auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) 5ms
+     × el contexto de una transacción no sirve en la siguiente de la misma conexión 3ms
+     × auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) 20ms
      × catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras 11ms
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
       Tests  7 failed | 10 passed (17)
-== membership
-     × owner y staff de A reciben 404 en todos los GET de la tienda B 16ms
-     × IDs malformados, inyección y traversal en la ruta → 404 sin errores 500 18ms
-     × A no puede editar, invitar, cambiar roles ni expulsar en B (404)  9ms
-     × tras todos los ataques, la tienda B está exactamente igual 14ms
-     × mc_app sin contexto no ve ninguna fila de control ni de comercio 3ms
+== permissive (debe fallar)
+     × cabeceras de tenant inventadas se ignoran 18ms
+     × mc_app sin contexto no ve ninguna fila de control ni de comercio 4ms
+     × dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID 4ms
      × forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) 2ms
-     × auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) 4ms
+     × el contexto de una transacción no sirve en la siguiente de la misma conexión 3ms
+     × auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) 6ms
+     × catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras 14ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  7 failed | 10 passed (17)
+== membership (debe fallar)
+     × owner y staff de A reciben 404 en todos los GET de la tienda B 14ms
+     × IDs malformados, inyección y traversal en la ruta → 404 sin errores 500 15ms
+     × A no puede editar, invitar, cambiar roles ni expulsar en B (404)  8ms
+     × tras todos los ataques, la tienda B está exactamente igual 17ms
+     × mc_app sin contexto no ve ninguna fila de control ni de comercio 3ms
+     × forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) 8ms
+     × auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) 10ms
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
       Tests  7 failed | 10 passed (17)

@@ -203,6 +203,10 @@ describe('Capa de base de datos (lo que la API podría olvidar)', () => {
       for (const row of t.rows) expect({ t: row.t, r: row.r, f: row.f, o: row.o }).toEqual({ t: row.t, r: true, f: true, o: 'mc_migrator' });
       const pols = await c.query(`SELECT tablename, qual FROM pg_policies WHERE schemaname IN ('control','commerce') AND qual = 'true' AND NOT ('mc_ops' = ANY (roles))`);
       expect(pols.rows).toEqual([]);
+      // N1: el tenant se compara contra un subselect (InitPlan), nunca función por fila
+      const tp = await c.query(`SELECT tablename, qual FROM pg_policies WHERE schemaname = 'commerce' AND policyname = 'tenant_isolation'`);
+      expect(tp.rows.length).toBeGreaterThanOrEqual(2);
+      for (const r of tp.rows) expect({ t: r.tablename, ok: /\(\s*SELECT commerce\.current_tenant\(\)/i.test(r.qual) }).toEqual({ t: r.tablename, ok: true });
       const roles = await c.query(`SELECT rolname, rolbypassrls, rolsuper FROM pg_roles WHERE rolname IN ('mc_app','mc_auth','mc_ops') ORDER BY 1`);
       for (const r of roles.rows) expect({ n: r.rolname, b: r.rolbypassrls, s: r.rolsuper }).toEqual({ n: r.rolname, b: false, s: false });
       const views = await c.query(`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace

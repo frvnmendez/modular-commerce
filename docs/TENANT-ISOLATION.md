@@ -4,15 +4,15 @@ Decisión: ADR-0002. Evidencia: `docs/release-0/VERIFICATION-REPORT.md` §2–§
 
 ## Reglas obligatorias (se comprueban en revisión y CI)
 
-1. Toda tabla con datos de una tienda tiene `tenant_id uuid NOT NULL`, `ENABLE` y `FORCE ROW LEVEL SECURITY`, política `tenant_isolation` con `USING` y `WITH CHECK`.
+1. Toda tabla con datos de una tienda tiene `tenant_id uuid NOT NULL`, `ENABLE` y `FORCE ROW LEVEL SECURITY` y la política `tenant_isolation` con `USING` y `WITH CHECK`. La comparación se escribe como `tenant_id = (SELECT commerce.current_tenant())`: el subselect se evalúa una sola vez por consulta (RT-R1 N1). Además, un índice que empiece por `tenant_id`.
 2. Las FKs entre tablas de tienda son compuestas `(tenant_id, x_id)`.
 3. Los índices únicos de negocio incluyen `tenant_id` (`UNIQUE (tenant_id, email)`), nunca globales: un email puede ser cliente en dos tiendas como **dos clientes distintos** (contraste con Vendure, PoC B).
-4. La aplicación conecta como `app_user` (no dueño, sin `BYPASSRLS`). Las migraciones usan `migrator`. Ningún proceso de aplicación usa superusuario.
-5. El contexto se fija solo con `withTenant(session, fn)`: transacción + `set_config('app.tenant_id', $1, true)`. Prohibido `SET` de sesión.
+4. La aplicación conecta como `mc_app` (no es dueño y no tiene `BYPASSRLS`). Las migraciones usan `mc_migrator`. Ningún proceso de aplicación usa superusuario.
+5. El contexto se abre solo con `withUser`/`withStore`/`withOperator` de `@mc/db`, que reciben el **token de sesión**. Dentro de una transacción, `control.begin_session(token)` valida la sesión en la BD y `control.enter_store(id)` valida la pertenencia. Ambas escriben en `control.request_context`, que `mc_app` no puede tocar. No se usan GUCs para el contexto, porque `mc_app` podría forjarlos (RT-R1 H1).
 6. Ningún endpoint, job ni webhook acepta `tenant_id` del exterior sin verificarlo contra una firma o sesión.
 7. IDs UUIDv7. Respuestas 404 para recursos ajenos (no 403).
 8. Caché: clave `t:{tenant}:…`. Objetos: `s3://bucket/{tenant}/…` con URLs firmadas de corta duración. Logs con `tenant_id` y sin datos personales en claro.
-9. Jobs: el payload lleva `tenant_id` y el worker abre `withTenant` con él; el productor solo puede encolar para su propio tenant.
+9. Jobs (R2+): el payload lleva `tenant_id` y el worker abre el contexto con él. El productor solo puede encolar para su propio tenant. El mecanismo para jobs sin sesión de usuario (un rol de worker y su propia función de entrada) se diseña en R2 con un ADR.
 10. Operaciones de plataforma que cruzan tenants (soporte, analítica global) usan un rol separado, auditado y con acceso de solo lectura a vistas agregadas.
 
 ## Suite de aislamiento (Gate C)

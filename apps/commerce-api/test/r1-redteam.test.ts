@@ -95,6 +95,18 @@ describe('H4: invitaciones revocables y ligadas a quien invita', () => {
   });
 });
 
+describe('N2: una invitación no revive si quien la emitió vuelve a la tienda', () => {
+  it('expulsar y readmitir al admin no reactiva su invitación antigua', async () => {
+    const admin = await join('admin');
+    const guest = await signUp(h, 'RtRevive');
+    const inv = await admin.call('POST', `/v1/stores/${store.storeId}/invitations`, { email: guest.email, role: 'staff' });
+    expect((await owner.call('DELETE', `/v1/stores/${store.storeId}/members/${admin.id}`)).status).toBe(204);
+    const back = await owner.call('POST', `/v1/stores/${store.storeId}/invitations`, { email: admin.email, role: 'admin' });
+    expect((await admin.call('POST', '/v1/invitations/accept', { token: back.body.token })).status).toBe(200);
+    expect((await guest.call('POST', '/v1/invitations/accept', { token: inv.body.token })).status).toBe(404);
+  });
+});
+
 describe('H5: restablecer la contraseña cierra las sesiones abiertas', () => {
   it('la sesión anterior deja de valer tras el reset', async () => {
     const u = await signUp(h, 'RtReset');

@@ -2,7 +2,7 @@
 
 Plataforma SaaS de comercio electrónico multi-tenant, modular y asistida por IA.
 
-**Estado:** Release 1 (cuentas, tiendas, roles y panel del comerciante) **probado localmente**. No hay nada desplegado. Release 0 (investigación, PoCs y ADRs) está en `docs/` y `poc/`.
+**Estado:** Release 1 (cuentas, tiendas, roles y panel del comerciante) **probado localmente**; revisión del Red Team: GO con condiciones. No hay nada desplegado. Release 0 (investigación, PoCs y ADRs) está en `docs/` y `poc/`.
 
 - Plan y decisiones: [`docs/MASTER-PLAN.md`](docs/MASTER-PLAN.md), [`docs/TECH-DECISIONS.md`](docs/TECH-DECISIONS.md), [`docs/decisions/`](docs/decisions/)
 - Aislamiento entre tiendas: [`docs/TENANT-ISOLATION.md`](docs/TENANT-ISOLATION.md)

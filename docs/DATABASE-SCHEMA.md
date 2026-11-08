@@ -15,10 +15,13 @@ Ninguno es superusuario. La suite de aislamiento comprueba estos atributos en el
 
 ## Contexto de petición
 
-- `app.user_id` y `app.tenant_id` son GUC **locales a la transacción** (`set_config(..., true)`), fijados solo por `@mc/db` (`withUser`, `withStore`, `withOperator`). ESLint prohíbe fijarlos en otro sitio.
-- `withStore` llama a `control.enter_store(store_id)`, que comprueba la pertenencia y fija `app.tenant_id`. Si el usuario no es miembro → `STORE_NOT_FOUND` (404).
+- El contexto (usuario y tienda) vive en `control.request_context`. Es una tabla `UNLOGGED` propiedad de `mc_migrator`, con clave (`pg_backend_pid()`, `pg_current_xact_id()`). `mc_app` no tiene ningún privilegio sobre ella.
+- Solo la escriben dos funciones:
+  - `control.begin_session(token)` valida en la BD el token de sesión de Better Auth: tiene que estar vigente y ser de un usuario con email verificado.
+  - `control.enter_store(store)` exige pertenencia y fija el tenant.
+- `control.current_user_id()` y `commerce.current_tenant()` leen la fila de la transacción actual. Al terminar la transacción, la fila deja de coincidir.
+- `@mc/db` (`withUser`, `withStore`, `withOperator`) recibe el token de sesión, no un id de usuario. Si `mc_app` forja `set_config('app.*')`, no obtiene nada. Lo comprueba la suite de aislamiento (RT-R1 H1).
 - Al devolver la conexión al pool se ejecuta `DISCARD ALL`.
-- Helpers: `control.current_user_id()`, `commerce.current_tenant()`.
 
 ## Esquema `control` (plano de control)
 
@@ -28,7 +31,8 @@ Ninguno es superusuario. La suite de aislamiento comprueba estos atributos en el
 | `organization_members` | PK (`org_id`, `user_id`), `role` ∈ owner/admin/member | miembros | funciones |
 | `stores` | `id uuid` PK (= `tenant_id`), `org_id`, `name`, `slug` único `^[a-z0-9](?:[a-z0-9-]{1,46}[a-z0-9])$`, `country` ISO-2, `currency` ISO-4217, `cell`, `status` ∈ active/suspended/closed | miembros de la tienda; `mc_ops` todo | `create_store()`, `update_store()` |
 | `store_members` | PK (`store_id`, `user_id`), `role` ∈ owner/admin/staff | miembros de la tienda | `accept_invitation()`, `set_member_role()`, `remove_member()` |
-| `invitations` | `id`, `store_id`, `email citext`, `role` ∈ admin/staff, `token_hash` único (sha256), `expires_at`, `accepted_at`, `revoked_at` | owner/admin de la tienda | `create_invitation()`, `accept_invitation()` |
+| `invitations` | `id`, `store_id`, `email citext`, `role` ∈ admin/staff, `token_hash` único (sha256), `expires_at`, `accepted_at`, `revoked_at` | owner/admin de la tienda | `create_invitation()`, `accept_invitation()`, `revoke_invitation()` |
+| `request_context` | (`pid`, `xid`) PK, `user_id`, `tenant_id` | nadie | `begin_session()`, `enter_store()` |
 | `platform_operators` | `user_id` PK | solo la propia fila | solo administración de BD |
 | `platform_audit` | `operator_id`, `action`, `target`, `at` | `mc_ops` | `mc_ops` (solo su propio `operator_id`) |
 
@@ -44,19 +48,21 @@ Ninguno es superusuario. La suite de aislamiento comprueba estos atributos en el
 | `create_store(id, org, name, slug, country, currency, profile, caps)` | owner/admin de la org | Crea tienda + owner + `store_settings` + `audit_events(store.created)` en una transacción; `ORG_NOT_FOUND`, `DUPLICATE` |
 | `update_store(store, name, country, currency)` | owner/admin | Auditado (`store.updated`) |
 | `create_invitation(id, store, email, role, token_hash, ttl)` | owner (cualquier rol), admin (solo staff) | Auditado |
-| `accept_invitation(token_hash, email)` | invitado con el mismo email | Un solo uso, no caducada ni revocada; `INVITATION_INVALID` (404) |
-| `set_member_role(store, user, role)` | owner | Protege al último owner (`LAST_OWNER`, 409); auditado |
-| `remove_member(store, user)` | owner; admin sobre staff; uno mismo | Protege al último owner; auditado |
-| `member_directory(store)` | miembros | Nombre y email de los miembros (une `auth."user"` sin exponer la tabla) |
+| `begin_session(token)` | `mc_app`, `mc_ops` | Abre el contexto si la sesión es válida; `NO_USER_CONTEXT` |
+| `accept_invitation(token_hash, email)` | invitado con el mismo email | Un solo uso, no caducada ni revocada, tienda activa y quien invitó conserva el permiso; `INVITATION_INVALID` (404) |
+| `revoke_invitation(store, id)` | owner; admin solo invitaciones de staff | Auditado (`invitation.revoked`) |
+| `set_member_role(store, user, role)` | owner | Bloquea la tienda (`FOR UPDATE`) y protege al último owner (`LAST_OWNER`, 409); auditado |
+| `remove_member(store, user)` | owner; admin sobre staff; uno mismo | Bloquea la tienda y protege al último owner; auditado |
+| `member_directory(store)` | owner/admin | Nombre y email de los miembros (une `auth."user"` sin exponer la tabla) |
 
 ## Esquema `commerce` (plano de comercio)
 
-Toda tabla tiene `tenant_id` y RLS **ENABLE + FORCE** con la política `tenant_isolation`: `tenant_id = commerce.current_tenant()` en `USING` y `WITH CHECK`.
+Toda tabla tiene `tenant_id` y RLS **ENABLE + FORCE**, con la política `tenant_isolation`: `tenant_id = (SELECT commerce.current_tenant())` en `USING` y en `WITH CHECK`. El subselect se evalúa una vez por consulta.
 
 | Tabla | Columnas | Notas |
 |---|---|---|
 | `store_settings` | `tenant_id` PK, `business_profile jsonb`, `capabilities text[]`, `updated_at` | La navegación del panel = capacidades ∩ permisos del rol |
-| `audit_events` | `id`, `tenant_id`, `actor_user_id`, `action`, `target_type`, `target_id`, `metadata jsonb`, `at` | `mc_app`: solo INSERT y SELECT (sin UPDATE/DELETE) |
+| `audit_events` | `id`, `tenant_id`, `actor_user_id`, `action`, `target_type`, `target_id`, `metadata jsonb`, `at` | `mc_app`: solo INSERT y SELECT (sin UPDATE/DELETE). Una política restrictiva exige `actor_user_id = current_user_id()` |
 
 ## Esquema `auth`
 
@@ -71,5 +77,8 @@ Tablas de Better Auth 1.7 (`user`, `session`, `account`, `verification`). Solo `
 | `0003_store_update.sql` | `update_store` |
 | `0004_grant_membership_helpers.sql` | `EXECUTE` de `org_role`/`store_role` a `mc_app` (las políticas los evalúan como `mc_app`) |
 | `0005_fix_accept_invitation_citext.sql` | `accept_invitation` con `public` en `search_path` para el operador de `citext` |
+| `0007_red_team_r1_pass2.sql` | Políticas con `(SELECT current_tenant())` (InitPlan); trigger que revoca invitaciones de quien pierde el permiso |
+| `0008_fix_revoke_orphan_null.sql` | Corrige el trigger en `DELETE` (comparación con NULL) |
+| `0006_red_team_r1.sql` | Correcciones del Red Team: `request_context` y `begin_session`, bloqueos del último owner, `revoke_invitation`, actor de auditoría, directorio restringido |
 
 Las migraciones aplicadas se registran en `public.schema_migrations` con checksum; editar una ya aplicada hace fallar `migrate`.

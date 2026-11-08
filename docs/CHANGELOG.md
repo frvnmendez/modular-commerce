@@ -7,6 +7,7 @@
 - API: organizaciones, tiendas con perfil de negocio → capacidades, invitaciones de un solo uso (hash sha256), roles owner/admin/staff, protección del último owner, auditoría, panel de plataforma auditado.
 - Panel del comerciante (Next.js 16): acceso, onboarding de 8 preguntas, navegación por capacidades, equipo, actividad, ajustes, aceptación de invitaciones, vista de plataforma.
 - Suite de aislamiento entre tiendas sobre BD desechable con 3 controles negativos (rls-off, permissive, membership) que la hacen fallar; CI de GitHub Actions.
+- Revisión del Red Team (NO-GO → GO con condiciones): contexto de tenant no forjable (`request_context` + token de sesión), límite de intentos por IP real, último owner bajo concurrencia, revocación de invitaciones, reset que cierra sesiones, políticas RLS con InitPlan.
 - ADR-0002 a ADR-0005 aceptados; ADR-0001 pendiente del spike de 3 días antes de R2.
 
 ## [R0] 2026-11-08
