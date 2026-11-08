@@ -5,6 +5,10 @@
 | `059f25b` | **Original revisado.** Sobre él se hizo la revisión estática de la primera ronda |
 | `be6af95` | **Primera corrección.** Corrige los cuatro hallazgos de la primera ronda |
 | `0bcdea4` | **Segunda corrección.** Resultado de la segunda ronda, hecha sobre `be6af95` |
+| `bb1961d` | Informe de la segunda ronda (solo documentación). Su CI **falló** por una prueba nueva que dependía de la collation (ver abajo) |
+| `0640acd` | **Corrección del CI.** Una línea en `tests/isolation/test/tenant-isolation.test.ts`; no cambia código de la aplicación. CI en verde: [run 42532125447](https://github.com/frvnmendez/modular-commerce/actions/runs/42532125447) |
+
+Todas las correcciones descritas en este informe están en `0640acd`, que era la cabeza del PR #1 al terminar la segunda ronda (`head.sha` consultado en la API de GitHub el 2026-11-08). Este documento se actualiza en un commit posterior que solo toca este fichero; su hash y su CI se indican en la descripción del PR.
 
 En las dos rondas, cada hallazgo se reprodujo antes de corregirlo, y cada prueba nueva se comprobó contra el código con la corrección retirada (sabotaje): falla sin la corrección y pasa con ella.
 
@@ -137,6 +141,24 @@ Hasta ahora ninguna prueba lo cubría. **En `0bcdea4`** se añade `tests/isolati
 - con la invitación vencida, responde 404, sin membresía, y la invitación sigue pendiente;
 - control positivo: la misma invitación con fecha futura sí se acepta.
 
+### Fallo de CI en `bb1961d` y corrección en `0640acd`
+
+- **Qué falló.** El [run 42531989506](https://github.com/frvnmendez/modular-commerce/actions/runs/42531989506) sobre `bb1961d` se detuvo en «Suite de aislamiento (Gate C)». Solo falló una de las 20 pruebas: la nueva «mc_app no puede suplantar la identidad…». Los pasos siguientes (controles negativos, auditoría, compilación del panel y E2E) no llegaron a ejecutarse.
+- **Por qué.** La prueba obtenía del catálogo las tablas en las que puede escribir cada rol, con `ORDER BY` en SQL, y comparaba la lista con un array fijo. El orden de `'auth."user"'` frente a `'auth.session'` depende de la collation de la base de datos:
+  - en local la base de datos usa `C.UTF-8`, que compara bytes: la comilla (`"`, 0x22) va antes que la `s`, y sale `auth."user"` primero;
+  - el Postgres del CI (imagen `postgres:16`) se inicializa con la locale de glibc `en_US.utf8`, según su propio log: «The database cluster will be initialized with locale "en_US.utf8"». Allí la consulta devolvió `auth.session` primero: el mensaje del fallo fue `expected [ 'mc_auth:auth.session', …(1) ] to deeply equal [ 'mc_auth:auth."user"', …(1) ]`. Es coherente con que glibc ignora la puntuación en la primera pasada de la comparación (`session` < `user`).
+
+  Límite de la comprobación: este contenedor no tiene la locale `en_US.utf8` de glibc, así que el orden del CI no se reprodujo en local. La evidencia es el log del CI. La collation ICU `en-US-x-icu`, que sí está disponible aquí, ordena como `C` (`auth."user"` primero), lo que confirma que el resultado depende del proveedor y de la locale de cada base de datos.
+
+  El contenido era el mismo (`mc_auth` puede escribir en esas dos tablas y nadie más); solo cambiaba el orden. No era un fallo de seguridad ni de la aplicación.
+- **Corrección en `0640acd`.** La lista se ordena en JavaScript (`.sort()`) antes de compararla, así el resultado no depende de la collation. No se relajó ninguna aserción.
+- **Comprobación.** En local, aislamiento 20/20 y los tres controles negativos detectados por la causa prevista. En CI, [run 42532125447](https://github.com/frvnmendez/modular-commerce/actions/runs/42532125447) en verde sobre `0640acd`, con todos los pasos:
+  - lint y tipos;
+  - core 6/6, API 30/30, aislamiento 20/20;
+  - controles negativos: `rls-off` 8 fallan y 12 pasan, `permissive` 8/12, `membership` 9/11;
+  - auditoría: una vulnerabilidad moderada (`minimatch`, solo en desarrollo);
+  - compilación del panel y E2E 11/11.
+
 ### Cuándo se borra la invitación guardada (`0bcdea4`)
 
 | Situación | ¿Se borra? |
@@ -153,7 +175,7 @@ En `be6af95` se borraba ante cualquier fallo distinto de 401 o email sin verific
 
 ---
 
-## Pendientes explícitos (no validados)
+## Pendientes para producción (no validados, fuera del alcance de este PR)
 
 - **Balanceador o CDN real.** Solo se ha probado la lógica de `PANEL_TRUST_PROXY` con un balanceador simulado (función `clientIp`) y la cadena panel → API en local. Falta comprobar con el balanceador real que añade `X-Forwarded-For` como se espera, y fijar `PANEL_TRUST_PROXY` y `TRUST_PROXY` reales.
 - **Envío real de emails.** No hay remitente de producción: los emails se escriben en el log y, fuera de producción, en `MAIL_OUTBOX_FILE`. No se ha probado la entrega, ni los enlaces abiertos desde un cliente de correo real, ni los filtros de spam.
