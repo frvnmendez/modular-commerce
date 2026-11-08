@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pg from 'pg';
-import { closePools } from '@mc/db';
-import { createStore, makeApp, PROFILE, signUp, type Client } from './harness.ts';
+import { createStore, makeApp, PROFILE, shutdown, signUp, type Client } from './harness.ts';
 
 const h = makeApp();
 let owner: Client;
@@ -13,7 +12,7 @@ beforeAll(async () => {
   owner = await signUp(h, 'Owner');
   store = await createStore(owner, slug);
 });
-afterAll(async () => { await h.app.close(); await closePools(); });
+afterAll(async () => { await shutdown(h.app); });
 
 describe('Registro y sesión', () => {
   it('sin sesión → 401; con email sin verificar → 403', async () => {

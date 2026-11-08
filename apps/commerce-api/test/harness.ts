@@ -1,4 +1,5 @@
-import { createAuth, type MailMessage } from '@mc/auth';
+import { closeAuthPools, createAuth, type MailMessage } from '@mc/auth';
+import { closePools } from '@mc/db';
 import { buildApp } from '../src/app.ts';
 
 process.env.AUTH_RATE_LIMIT ??= 'off';
@@ -8,6 +9,13 @@ export function makeApp() {
   const auth = createAuth({ mailer: async (m) => { outbox.push(m); }, baseURL: 'http://localhost:4000', secret: 'test-secret-'.padEnd(40, 'x'), trustedOrigins: ['http://localhost:3000'] });
   const app = buildApp({ auth, allowedOrigins: ['http://localhost:3000'], logger: false });
   return { app, outbox };
+}
+
+/** Cierra la app y todos los pools (BD de la app y de auth). */
+export async function shutdown(app: { close: () => Promise<unknown> }) {
+  await app.close();
+  await closePools();
+  await closeAuthPools();
 }
 
 export type App = ReturnType<typeof makeApp>['app'];

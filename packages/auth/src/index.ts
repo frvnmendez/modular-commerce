@@ -10,8 +10,15 @@ export type Mailer = (m: MailMessage) => Promise<void>;
  * Usa su propio rol de BD (mc_auth) limitado al esquema auth. Organizaciones, tiendas y roles
  * NO viven aquí: son del plano de control (RLS + funciones auditadas).
  */
+const authPools = new Set<pg.Pool>();
+export async function closeAuthPools() {
+  await Promise.all([...authPools].map((p) => p.end()));
+  authPools.clear();
+}
+
 export function createAuth(opts: { mailer: Mailer; baseURL: string; secret: string; trustedOrigins?: string[] }) {
   const database = new pg.Pool({ ...connectionFor('auth'), max: 5, options: '-c search_path=auth' });
+  authPools.add(database);
   return betterAuth({
     database,
     baseURL: opts.baseURL,
