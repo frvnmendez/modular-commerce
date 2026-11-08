@@ -10,7 +10,7 @@ Este informe solo recoge lo que se ejecutó de verdad. Cada resultado indica el 
 
 | Requisito R1 (plan maestro) | Estado | Dónde |
 |---|---|---|
-| Monorepo, CI | Implementado. CI escrito pero **no ejecutado en GitHub**, porque el repositorio aún no está conectado | `package.json`, `turbo.json`, `.github/workflows/ci.yml` |
+| Monorepo, CI | **Validado en CI de GitHub** (run 42509084197 en el PR #1, 2026-11-08): lint, typecheck, tests 6+29+17, los tres sabotajes detectados (7 fallos cada uno), `pnpm audit` sin altos | `package.json`, `turbo.json`, `.github/workflows/ci.yml` |
 | Autenticación con verificación de email | Probado localmente | `packages/auth`, `r1-flows.test.ts` |
 | Organizaciones y tiendas con provisionamiento transaccional | Probado localmente | `control.create_store`, `r1-flows.test.ts` |
 | RBAC owner/admin/staff, invitaciones, último owner | Probado localmente | `packages/core/src/rbac.ts`, migraciones 0001/0006–0008 |
@@ -90,5 +90,5 @@ Ver [`RED-TEAM.md`](RED-TEAM.md).
 
 ## 7. Pendiente para cerrar R1 fuera de este entorno
 
-1. Conectar el repositorio de GitHub, subir el código y **ejecutar el CI en GitHub**. Hasta entonces, el CI está escrito pero no validado.
-2. Aprobación del propietario.
+1. ~~Conectar el repositorio y ejecutar el CI en GitHub.~~ Hecho: PR #1, CI en verde.
+2. Aprobación del propietario y merge del PR #1.
