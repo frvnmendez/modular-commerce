@@ -1,0 +1,24 @@
+== ISOLATION_SABOTAGE=ninguno
+      Tests  13 passed (13)
+== ISOLATION_SABOTAGE=rls-off
+     × cabeceras de tenant inventadas se ignoran 17ms
+     × mc_app sin contexto no ve ninguna fila de control ni de comercio 4ms
+     × dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID 3ms
+     × catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras 9ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  4 failed | 9 passed (13)
+== ISOLATION_SABOTAGE=permissive
+     × cabeceras de tenant inventadas se ignoran 15ms
+     × mc_app sin contexto no ve ninguna fila de control ni de comercio 4ms
+     × dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID 3ms
+     × catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras 15ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  4 failed | 9 passed (13)
+== ISOLATION_SABOTAGE=membership
+     × owner y staff de A reciben 404 en todos los GET de la tienda B 11ms
+     × IDs malformados, inyección y traversal en la ruta → 404 sin errores 500 16ms
+     × A no puede editar, invitar, cambiar roles ni expulsar en B (404)  8ms
+     × tras todos los ataques, la tienda B está exactamente igual 17ms
+     × mc_app sin contexto no ve ninguna fila de control ni de comercio 3ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  5 failed | 8 passed (13)

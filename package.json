@@ -10,7 +10,7 @@
     "typecheck": "turbo run typecheck",
     "lint": "eslint .",
     "test": "turbo run test",
-    "db:bootstrap": "node infra/db/bootstrap.mjs",
+    "db:bootstrap": "pnpm --filter @mc/db bootstrap",
     "db:migrate": "pnpm --filter @mc/db migrate",
     "test:isolation": "pnpm --filter @mc/isolation-tests test"
   },
