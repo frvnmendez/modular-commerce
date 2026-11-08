@@ -218,6 +218,77 @@ describe('Capa de base de datos (lo que la API podría olvidar)', () => {
       await a.end();
     }
   });
+  it('mc_app no puede suplantar la identidad del contexto ni tocar email/emailVerified (PR#1, 2ª revisión)', async () => {
+    const { pool } = await import('@mc/db');
+    const hash = createHash('sha256').update(B.inviteToken).digest('hex');
+    const c = await pool('app').connect();
+    const denied = async (sql: string, params: unknown[] = []) => {
+      await c.query('SAVEPOINT p');
+      await expect(c.query(sql, params)).rejects.toThrow(/permission denied|must be member/);
+      await c.query('ROLLBACK TO SAVEPOINT p');
+    };
+    try {
+      await c.query('BEGIN');
+      // Escribir el contexto, el email o emailVerified, o cambiar de rol: denegado.
+      await denied('INSERT INTO control.request_context (pid, xid, user_id) VALUES (pg_backend_pid(), pg_current_xact_id(), $1)', [B.owner.id]);
+      await denied('UPDATE control.request_context SET user_id = $1', [B.owner.id]);
+      await denied(`UPDATE auth."user" SET email = 'pendiente@test.local', "emailVerified" = true WHERE id = $1`, [A.owner.id]);
+      await denied('INSERT INTO auth.session (id, token, "userId", "expiresAt", "createdAt", "updatedAt") VALUES ($1, $1, $2, now() + interval \'1 day\', now(), now())', ['forjada', B.owner.id]);
+      await denied('SET ROLE mc_auth');
+      await denied('SET ROLE mc_migrator');
+      await denied('CREATE FUNCTION public.current_user_id() RETURNS text LANGUAGE sql AS $$ SELECT \'x\' $$');
+      // Ni siquiera puede crear una tabla temporal que intente suplantar a control.request_context.
+      await denied('CREATE TEMP TABLE request_context (pid int, xid xid8, user_id text, tenant_id uuid)');
+      // Cambiar su search_path tampoco afecta a las funciones SECURITY DEFINER (search_path fijado).
+      await c.query("SELECT set_config('search_path', 'pg_temp, public, control, commerce', true)");
+      const r = await c.query('SELECT control.current_user_id() u, commerce.current_tenant()::text t, (SELECT count(*) FROM control.store_members)::int m');
+      expect(r.rows[0]).toEqual({ u: null, t: null, m: 0 });
+      await c.query('SAVEPOINT p');
+      await expect(c.query('SELECT control.accept_invitation($1)', [hash])).rejects.toThrow(/NO_USER_CONTEXT/);
+      await c.query('ROLLBACK TO SAVEPOINT p');
+      await c.query('ROLLBACK');
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c.query('DISCARD ALL');
+      c.release();
+    }
+    const a = adminClient();
+    await a.connect();
+    try {
+      // Catálogo: solo mc_auth (y el dueño) puede escribir en auth; nadie salvo el dueño en request_context.
+      const w = await a.query(`SELECT r.rolname, t.tbl, has_table_privilege(r.rolname, t.tbl, 'INSERT,UPDATE,DELETE') w
+        FROM (VALUES ('mc_app'), ('mc_ops'), ('mc_auth')) r(rolname),
+             (VALUES ('auth."user"'), ('auth.session'), ('control.request_context')) t(tbl) ORDER BY 1, 2`);
+      const writable = w.rows.filter((x) => x.w).map((x) => `${x.rolname}:${x.tbl}`);
+      expect(writable).toEqual(['mc_auth:auth."user"', 'mc_auth:auth.session']);
+      const pub = await a.query(`SELECT has_schema_privilege('mc_app', 'public', 'CREATE') app, has_schema_privilege('mc_auth', 'public', 'CREATE') auth,
+        (SELECT count(*)::int FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.member WHERE r.rolname IN ('mc_app','mc_ops','mc_auth')) memberships`);
+      expect(pub.rows[0]).toEqual({ app: false, auth: false, memberships: 0 });
+      const r = await a.query(`SELECT (SELECT email FROM auth."user" WHERE id = $1) e, (SELECT count(*)::int FROM auth.session WHERE id = 'forjada') s`, [A.owner.id]);
+      expect(r.rows[0]).toEqual({ e: A.owner.email, s: 0 });
+    } finally {
+      await a.end();
+    }
+  });
+  it('el servidor rechaza una invitación caducada aunque el email coincida, y la acepta si sigue vigente', async () => {
+    const t = await import('@mc/commerce-api/testing');
+    const guest = await t.signUp(h, 'Caducada');
+    const inv = (await B.owner.call('POST', `/v1/stores/${B.storeId}/invitations`, { email: guest.email, role: 'staff' })).body;
+    const a = adminClient();
+    await a.connect();
+    try {
+      await a.query("UPDATE control.invitations SET expires_at = now() - interval '1 second' WHERE id = $1", [inv.id]);
+      expect((await guest.call('POST', '/v1/invitations/accept', { token: inv.token })).status).toBe(404);
+      const r = await a.query(`SELECT (SELECT count(*)::int FROM control.store_members WHERE user_id = $1) m,
+        (SELECT accepted_at IS NULL FROM control.invitations WHERE id = $2) pending`, [guest.id, inv.id]);
+      expect(r.rows[0]).toEqual({ m: 0, pending: true });
+      // Control positivo: la misma invitación, vigente, sí se acepta (el 404 se debía a la caducidad).
+      await a.query("UPDATE control.invitations SET expires_at = now() + interval '1 hour' WHERE id = $1", [inv.id]);
+      expect((await guest.call('POST', '/v1/invitations/accept', { token: inv.token })).status).toBe(200);
+    } finally {
+      await a.end();
+    }
+  });
   it('mc_app no puede escribir directamente en el plano de control ni borrar auditoría', async () => {
     const { withStore } = await import('@mc/db');
     await expect(withStore(A.owner.token, A.storeId, (c) => c.query("INSERT INTO control.store_members VALUES ($1, 'x', 'owner')", [B.storeId]))).rejects.toThrow(/permission denied/);

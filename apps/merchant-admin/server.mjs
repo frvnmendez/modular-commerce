@@ -37,6 +37,7 @@ export function clientIp(socketAddress, xffHeader) {
 }
 
 if (process.env.PANEL_SERVER_NO_LISTEN !== '1') {
+  process.env.MC_PANEL_SERVER = '1';   // next.config.ts rechaza arrancar en producción sin esta marca
   const app = next({ dev: false, hostname, port });
   const handle = app.getRequestHandler();
   await app.prepare();

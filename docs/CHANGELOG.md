@@ -1,6 +1,7 @@
 # Changelog
 
 ## [R1] 2026-11-08 — Probado localmente
+- Segunda revisión del PR #1: el panel se niega a arrancar en producción con `next start` (se saltaba la normalización de IP); las invitaciones guardadas son una lista (dos pestañas se retoman las dos) y solo se borran ante errores definitivos; botón para cambiar de cuenta cuando la invitación es para otro email; pruebas de identidad en BD, de caducidad en servidor y 4 E2E nuevos.
 - Revisión del PR #1: `accept_invitation` toma el email verificado de la BD (0009), la invitación se retoma tras iniciar sesión o verificar el email, cadena de confianza de IP panel → API (`server.mjs`, `TRUST_PROXY`, `PANEL_TRUST_PROXY`), E2E con Playwright en CI y controles negativos que verifican el motivo del fallo.
 - Monorepo pnpm + Turborepo, TypeScript 5.9 con ejecución nativa de Node 22, ESLint con reglas que prohíben fijar el contexto de tenant fuera de `@mc/db`.
 - Base de datos: roles separados (`mc_migrator`, `mc_app`, `mc_auth`, `mc_ops`), esquemas `control`/`commerce`/`auth`, RLS ENABLE+FORCE en toda tabla, funciones `SECURITY DEFINER` con `search_path` fijado, migraciones con checksum.

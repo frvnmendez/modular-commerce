@@ -7,7 +7,7 @@ En R1 no hay ningún despliegue. Este documento describe cómo se ejecuta lo que
 | Proceso | Comando | Escucha | Notas |
 |---|---|---|---|
 | API | `node apps/commerce-api/src/server.ts` | `HOST:PORT` (por defecto `127.0.0.1:4000`) | No debe exponerse a Internet: solo la consume el panel |
-| Panel | `pnpm --filter @mc/merchant-admin build` y después `node apps/merchant-admin/server.mjs` | `HOSTNAME:PORT` (por defecto `127.0.0.1:3000`) | Es el borde público. Reenvía `/api/auth/*` y `/v1/*` a la API (`API_URL`, que se fija al compilar) |
+| Panel | `pnpm --filter @mc/merchant-admin build` y después `pnpm --filter @mc/merchant-admin start` (= `node server.mjs`). `next start` se niega a arrancar | `HOSTNAME:PORT` (por defecto `127.0.0.1:3000`) | Es el borde público. Reenvía `/api/auth/*` y `/v1/*` a la API (`API_URL`, que se fija al compilar) |
 
 ## Cadena de confianza de la IP del cliente
 
@@ -38,13 +38,31 @@ Errores que hay que evitar:
 - **Confiar en rangos amplios.** Por ejemplo, `loopback` o `0.0.0.0/0` en `TRUST_PROXY`, o la red de los clientes en `PANEL_TRUST_PROXY`. Permite que el cliente elija su IP.
 - **Exponer la API directamente** con `TRUST_PROXY` configurado.
 
+### Vías alternativas de arranque
+
+| Vía | Estado | Cómo se comprueba |
+|---|---|---|
+| `pnpm start` / `node server.mjs` | Única vía de producción. Marca el proceso con `MC_PANEL_SERVER=1` antes de cargar Next | E2E y `README.md` lo usan |
+| `next start` | **Rechazado**: `next.config.ts` lanza un error en la fase de servidor de producción si falta la marca. Antes de esta comprobación se reprodujo el hueco: rotando `X-Forwarded-For`, 8 intentos de login dieron 8×401 sin ningún 429 | E2E «el panel no arranca en producción con `next start`» |
+| `next dev` | Solo desarrollo, sin normalización. No debe exponerse | — |
+| Salida `standalone` de Next | No está configurada (`output` no aparece en `next.config.ts`) | Revisión del fichero |
+| Llamar a la API directamente | La API escucha en `127.0.0.1` por defecto. Un cliente remoto no está en `TRUST_PROXY`, así que se usa la IP de su socket y su `X-Forwarded-For` se ignora. Un proceso **local** en la máquina de la API sí podría falsificarla | Depende del despliegue |
+
+La marca `MC_PANEL_SERVER` evita un error de configuración, no un ataque: quien controla el entorno del proceso puede fijarla.
+
+### Qué está comprobado y qué depende del despliegue real
+
+- **Comprobado localmente y en CI:** el panel sustituye las cabeceras de IP del cliente; la API solo confía en `127.0.0.1`; IP distintas no comparten bloqueo; falsificar `X-Forwarded-For` no lo elude; `next start` no arranca; la lógica de `PANEL_TRUST_PROXY` con un balanceador **simulado** (función `clientIp`).
+- **Pendiente, depende del despliegue real:** que el orquestador ejecute `pnpm start` y no otra orden; que solo el panel sea accesible desde fuera y la API quede en una red privada; el valor real de `PANEL_TRUST_PROXY` y que el balanceador real **añada** (no sustituya ni reenvíe sin más) `X-Forwarded-For`; y el `TRUST_PROXY` real si panel y API están en máquinas distintas. **No se ha validado con ningún balanceador real.**
+
 Lo comprueba `tests/e2e/specs/r1.spec.ts`:
 
 - Dos IP de cliente distintas (`127.0.0.2` y `127.0.0.3`) que pasan por el panel no comparten el bloqueo.
 - Rotar `X-Forwarded-For` no evita el bloqueo.
 - Decir que se viene de la IP bloqueada no bloquea a otro.
 - La cadena con un balanceador simulado (`PANEL_TRUST_PROXY=10.0.0.0/8`) devuelve la IP correcta.
+- `next start` falla al arrancar con un mensaje que remite a `server.mjs`.
 
 ## Otras variables
 
-Están en `.env.example`. En producción la API se niega a arrancar si `AUTH_BASE_URL` o `ALLOWED_ORIGINS` no son `https://`, para que las cookies sean `Secure`. `MAIL_OUTBOX_FILE` solo se usa fuera de producción, para que las pruebas E2E lean los emails.
+Están en `.env.example`. En producción la API se niega a arrancar si `AUTH_BASE_URL` o `ALLOWED_ORIGINS` no son `https://`, para que las cookies sean `Secure`. `MAIL_OUTBOX_FILE` solo se usa fuera de producción, para que las pruebas E2E lean los emails. **No hay envío real de emails:** el remitente de producción no está implementado ni probado (pendiente).

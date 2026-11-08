@@ -129,3 +129,21 @@ describe('H6: entradas raras no producen 500', () => {
     expect((await owner.call('DELETE', `/v1/stores/${store.storeId}/invitations/no-es-uuid`)).status).toBe(404);
   });
 });
+
+describe('PR#1 (2ª revisión): el email verificado no se puede cambiar desde la API de identidad', () => {
+  it('update-user y change-email no cambian email ni emailVerified, y no sirven para aceptar una invitación ajena', async () => {
+    const victim = 'victima-' + Date.now() + '@test.local';
+    const inv = await owner.call('POST', `/v1/stores/${store.storeId}/invitations`, { email: victim, role: 'admin' });
+    expect(inv.status).toBe(201);
+    const attacker = await signUp(h, 'RtEmail');
+    const o = { origin: 'http://localhost:3000' };
+    const u1 = await attacker.call('POST', '/api/auth/update-user', { email: victim, emailVerified: true }, o);
+    expect([u1.status, u1.body.code]).toEqual([400, 'EMAIL_CAN_NOT_BE_UPDATED']);
+    const u2 = await attacker.call('POST', '/api/auth/change-email', { newEmail: victim }, o);
+    expect([u2.status, u2.body.code]).toEqual([400, 'CHANGE_EMAIL_DISABLED']);
+    await attacker.call('POST', '/api/auth/update-user', { name: 'Otro', emailVerified: false }, o);
+    expect((await attacker.call('GET', '/v1/me')).body.user.email).toBe(attacker.email);
+    expect((await attacker.call('GET', '/v1/me')).status).toBe(200);   // sigue verificado
+    expect((await attacker.call('POST', '/v1/invitations/accept', { token: inv.body.token })).status).toBe(404);
+  });
+});

@@ -1,4 +1,5 @@
 import { expect, type BrowserContext, type Page } from '@playwright/test';
+import http from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { OUTBOX } from '../playwright.config.ts';
 
@@ -70,4 +71,40 @@ export async function createVerifiedUser(context: BrowserContext, name: string, 
   await expect(page).toHaveURL(/\/onboarding$/);
   expect(w.unexpected).toEqual([]);
   await page.close();
+}
+
+/**
+ * Cuenta verificada creada por HTTP desde una IP local propia (127.0.0.20+), para preparar usuarios sin agotar
+ * el límite de registros por IP (5/min) que comparten las pestañas del navegador. Si se pasa un contexto,
+ * se le añade la cookie de sesión. Los recorridos que se prueban siguen haciéndose en el navegador.
+ */
+let seedIp = 20;
+export async function seedVerifiedUser(name: string, email: string, context?: BrowserContext) {
+  const localAddress = `127.0.0.${seedIp++}`;
+  const signUp = await rawRequest(localAddress, 'POST', '/api/auth/sign-up/email', { email, password: PASSWORD, name });
+  expect(signUp.status).toBe(200);
+  const url = new URL(await mailTo(email, 'verify-email'));
+  const verify = await rawRequest(localAddress, 'GET', url.pathname + url.search);
+  expect(verify.status).toBe(302);
+  const session = verify.cookies.find((c) => c.name.endsWith('session_token'));
+  expect(session).toBeTruthy();
+  if (context) await context.addCookies([{ name: session!.name, value: session!.value, url: 'http://localhost:3000', httpOnly: true, sameSite: 'Lax' }]);
+}
+
+function rawRequest(localAddress: string, method: string, path: string, body?: unknown) {
+  return new Promise<{ status: number; cookies: { name: string; value: string }[] }>((resolve, reject) => {
+    const data = body === undefined ? undefined : JSON.stringify(body);
+    const req = http.request({
+      host: '127.0.0.1', port: 3000, path, method, localAddress,
+      headers: { host: 'localhost:3000', origin: 'http://localhost:3000', ...(data ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) } : {}) },
+    }, (r) => {
+      r.resume();
+      r.on('end', () => resolve({
+        status: r.statusCode ?? 0,
+        cookies: (r.headers['set-cookie'] ?? []).map((c) => { const [kv] = c.split(';'); const i = kv!.indexOf('='); return { name: kv!.slice(0, i), value: kv!.slice(i + 1) }; }),
+      }));
+    });
+    req.on('error', reject);
+    req.end(data);
+  });
 }

@@ -38,11 +38,11 @@ No hay daemon de Docker. Sin secretos reales: `.env` está en `.gitignore` y sol
 |---|---|
 | `pnpm lint` | 0 problemas. Incluye la regla que prohíbe fijar el contexto de tenant fuera de `@mc/db` (comprobada con un fichero sonda) |
 | `pnpm typecheck` | 7/7 paquetes sin errores |
-| `pnpm test` | core 6/6 · commerce-api 29/29 · isolation 18/18 |
-| `pnpm test:negative` (`rls-off`) | Detectado: 7 fallan y 11 pasan. Fallan las pruebas previstas de capa de BD y catálogo, sin fallos de infraestructura |
-| `pnpm test:negative` (`permissive`) | Detectado: 7 fallan y 11 pasan, por las mismas pruebas previstas |
-| `pnpm test:negative` (`membership`) | Detectado: 8 fallan y 10 pasan. Fallan las pruebas HTTP entre tiendas; las de BD fallan en cascada porque los ataques HTTP llegan a tener efecto |
-| `pnpm test:e2e` | 7/7 (Playwright, API y panel reales, límite de intentos activado) |
+| `pnpm test` | core 6/6 · commerce-api 30/30 · isolation 20/20 |
+| `pnpm test:negative` (`rls-off`) | Detectado: 8 fallan y 12 pasan. Fallan las pruebas previstas de capa de BD y catálogo, sin fallos de infraestructura |
+| `pnpm test:negative` (`permissive`) | Detectado: 8 fallan y 12 pasan, por las mismas pruebas previstas |
+| `pnpm test:negative` (`membership`) | Detectado: 9 fallan y 11 pasan. Fallan las pruebas HTTP entre tiendas; las de BD fallan en cascada porque los ataques HTTP llegan a tener efecto |
+| `pnpm test:e2e` | 11/11 (Playwright, API y panel reales, límite de intentos activado) |
 | `rate-limit.test.ts` con la corrección H2 retirada a mano | 1 fallo (esperado). Demuestra que la regresión detecta el fallo |
 | `pnpm --filter @mc/merchant-admin build` | Compila |
 | `pnpm audit --audit-level=high` | Pasa. 1 vulnerabilidad moderada (`minimatch` vía ESLint, solo en desarrollo) |
@@ -56,7 +56,7 @@ Defensa en profundidad comprobada:
 
 ## 4. Pruebas en navegador (E2E)
 
-Desde la revisión del PR #1: `pnpm test:e2e` (Playwright, `tests/e2e/specs/r1.spec.ts`). Arranca la API y el panel, y falla ante cualquier error no declarado. Escenarios: propietario de principio a fin; invitación sin sesión con cuenta nueva y verificación en otra pestaña; invitación sin sesión con usuario existente; revocación; vista móvil; límite de intentos a través del panel; cadena de confianza con balanceador. Ver [`PR1-REVIEW.md`](PR1-REVIEW.md).
+Desde la revisión del PR #1: `pnpm test:e2e` (Playwright, `tests/e2e/specs/r1.spec.ts`). Arranca la API y el panel, y falla ante cualquier error no declarado. Escenarios: propietario de principio a fin; invitación sin sesión con cuenta nueva y verificación en otra pestaña; invitación sin sesión con usuario existente; revocación; invitación abierta con otra cuenta; dos invitaciones en pestañas distintas; fallo transitorio al aceptar; vista móvil; límite de intentos a través del panel; cadena de confianza con balanceador; `next start` rechazado en producción. Ver [`PR1-REVIEW.md`](PR1-REVIEW.md).
 
 Antes (histórico, sustituido): `node tests/e2e/smoke.cjs` con la API en :4000 y el panel en :3000. Recorría:
 
@@ -79,7 +79,7 @@ Esta prueba encontró y corrigió tres defectos:
 
 ## 5b. Revisión del PR #1
 
-Cuatro hallazgos, todos confirmados y corregidos: aceptación de invitaciones con el email de la BD, continuación de la invitación tras el login, límite de intentos detrás del proxy y E2E estricto en CI. Detalle, reproducción y pruebas en [`PR1-REVIEW.md`](PR1-REVIEW.md).
+Primera revisión (sobre `059f25b`, corregida en `be6af95`): cuatro hallazgos, todos confirmados y corregidos. Segunda revisión (sobre `be6af95`): la identidad en BD ya estaba cubierta; se encontraron y corrigieron tres huecos (arranque con `next start`, dos invitaciones en pestañas, borrado de la invitación guardada ante fallos transitorios). Detalle, reproducción y pruebas en [`PR1-REVIEW.md`](PR1-REVIEW.md).
 
 ## 5. Revisión independiente
 

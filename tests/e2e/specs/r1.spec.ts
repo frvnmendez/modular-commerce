@@ -1,6 +1,8 @@
 import http from 'node:http';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
-import { createVerifiedUser, newEmail, PASSWORD, signUp, verifyInNewTab, watch } from '../support/helpers.ts';
+import { createVerifiedUser, newEmail, PASSWORD, seedVerifiedUser, signUp, verifyInNewTab, watch } from '../support/helpers.ts';
 
 /**
  * Recorridos de R1 en navegador real contra API + panel. Las pruebas comparten la tienda del propietario,
@@ -71,7 +73,7 @@ test('invitación sin sesión → cuenta nueva → verificación en otra pestañ
   await page.goto(path);
   await expect(page).toHaveURL(/\/login\?invite=1$/);
   await expect(page.getByText('Después la aceptaremos automáticamente')).toBeVisible();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pendingInvite') ?? 'null')?.path)).toBe(path);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pendingInvite') ?? '[]').map((e: { path: string }) => e.path))).toEqual([path]);
   await signUp(page, 'Pablo Personal', email);
 
   const { tab, url } = await verifyInNewTab(ctx, email);
@@ -139,6 +141,98 @@ test('revocación: el enlace revocado no da acceso y se informa al invitado', as
   await expect(owner.getByText('Invitación revocada').first()).toBeVisible();
 });
 
+const ORIGIN = { origin: 'http://localhost:3000' };
+const pending = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('pendingInvite') ?? '[]').map((e: { path: string }) => e.path) as string[]);
+
+/** Segunda tienda del propietario e invitación creada por API (para tener dos invitaciones de tiendas distintas). */
+async function secondStoreInvite(email: string) {
+  const me = await (await owner.request.get('/v1/me')).json();
+  const slug = `e2e-dos-${Date.now().toString(36)}`;
+  const st = await owner.request.post(`/v1/organizations/${me.organizations[0].id}/stores`, { headers: ORIGIN, data: {
+    name: 'Segunda tienda E2E', slug, country: 'ES', currency: 'EUR',
+    profile: { businessType: 'fashion', productKinds: 'physical', fulfillment: 'own-inventory', markets: ['ES'], shippingNeeds: 'domestic', technicalLevel: 'beginner', goals: ['first-sales'] },
+  } });
+  expect(st.status()).toBe(201);
+  const id = (await st.json()).id as string;
+  const inv = await owner.request.post(`/v1/stores/${id}/invitations`, { headers: ORIGIN, data: { email, role: 'staff' } });
+  expect(inv.status()).toBe(201);
+  return { id, path: `/invitations/accept#${(await inv.json()).token}` };
+}
+
+test('invitación abierta con otra cuenta: no se consume, se informa y se puede cambiar de cuenta', async ({ browser }) => {
+  const invitee = newEmail('destinataria');
+  await seedVerifiedUser('Dora Destinataria', invitee);
+  const path = await invite(invitee, 'Personal');
+
+  const ctx = await browser.newContext();
+  await seedVerifiedUser('Otto Otra', newEmail('otra'), ctx);   // sesión abierta con otra cuenta
+  const page = await ctx.newPage();
+  const w = watch(page, [ACCEPT_404, ME_401]);
+  await page.goto(path);
+  await expect(page.getByText('es para otro email')).toBeVisible();
+  expect(w.seen).toEqual(['POST /v1/invitations/accept → 404']);
+  expect(await pending(page)).toEqual([]);
+  expect((await page.request.get(`/v1/stores/${storeId}`)).status()).toBe(404);
+  // Sigue pendiente para su destinataria
+  await owner.goto(`${storeUrl}/team`);
+  await expect(owner.locator('h3', { hasText: 'Pendientes' }).locator('..').locator('li', { hasText: invitee })).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Cerrar sesión y usar otra cuenta' }).click();
+  await expect(page).toHaveURL(/\/login\?invite=1$/);
+  expect(await pending(page)).toEqual([path]);
+  await page.getByLabel('Email').fill(invitee);
+  await page.getByLabel('Contraseña').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await expect(page).toHaveURL(new RegExp(`/stores/${storeId}$`));
+  expect(await pending(page)).toEqual([]);
+  expect(w.unexpected).toEqual([]);
+});
+
+test('dos invitaciones abiertas en pestañas distintas sin sesión: se aceptan las dos tras iniciar sesión', async ({ browser }) => {
+  const email = newEmail('dos');
+  await seedVerifiedUser('Diego Dos', email);
+  const path1 = await invite(email, 'Personal');
+  const second = await secondStoreInvite(email);
+
+  const ctx = await browser.newContext();
+  const tab1 = await ctx.newPage();
+  const tab2 = await ctx.newPage();
+  const w1 = watch(tab1, [ACCEPT_401]);
+  const w2 = watch(tab2, [ACCEPT_401]);
+  await tab1.goto(path1);
+  await expect(tab1).toHaveURL(/\/login\?invite=1$/);
+  await tab2.goto(second.path);
+  await expect(tab2).toHaveURL(/\/login\?invite=1$/);
+  expect(await pending(tab1)).toEqual([path1, second.path]);
+
+  await tab1.getByLabel('Email').fill(email);
+  await tab1.getByLabel('Contraseña').fill(PASSWORD);
+  await tab1.getByRole('button', { name: 'Entrar' }).click();
+  await expect(tab1).toHaveURL(new RegExp(`/stores/${second.id}$`));   // la primera y después la segunda
+  const me = await (await tab1.request.get('/v1/me')).json();
+  expect(me.stores.map((s: { id: string }) => s.id).sort()).toEqual([storeId, second.id].sort());
+  expect(await pending(tab1)).toEqual([]);
+  expect([...w1.unexpected, ...w2.unexpected]).toEqual([]);
+});
+
+test('un fallo transitorio al aceptar conserva la invitación guardada y permite reintentar', async ({ browser }) => {
+  const email = newEmail('transitorio');
+  const ctx = await browser.newContext();
+  await seedVerifiedUser('Tania Transitoria', email, ctx);
+  const path = await invite(email, 'Personal');
+  const page = await ctx.newPage();
+  const w = watch(page, [{ method: 'POST', path: /^\/v1\/invitations\/accept$/, status: 503 }]);
+  await page.route('**/v1/invitations/accept', (r) => r.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"INTERNAL"}' }));
+  await page.goto(path);
+  await expect(page.getByRole('button', { name: 'Reintentar' })).toBeVisible();
+  expect(await pending(page)).toEqual([path]);
+  await page.unroute('**/v1/invitations/accept');
+  await page.getByRole('button', { name: 'Reintentar' }).click();
+  await expect(page).toHaveURL(new RegExp(`/stores/${storeId}$`));
+  expect(await pending(page)).toEqual([]);
+  expect(w.unexpected).toEqual([]);
+});
+
 test('vista móvil del panel sin desbordamiento horizontal', async ({ browser }) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, storageState: await owner.context().storageState() });
   const page = await ctx.newPage();
@@ -179,4 +273,13 @@ test('cadena de confianza del panel con un balanceador delante (PANEL_TRUST_PROX
   expect(clientIp('10.0.0.5', '6.6.6.6, 198.51.100.7')).toBe('198.51.100.7'); // vía balanceador: la IP que añadió
   expect(clientIp('10.0.0.5', '198.51.100.7, 10.0.0.9')).toBe('198.51.100.7'); // dos saltos de confianza
   expect(clientIp('::ffff:10.0.0.5', 'basura, 198.51.100.8')).toBe('198.51.100.8');
+});
+
+test('el panel no arranca en producción con `next start`, que se saltaría la normalización de IP', () => {
+  const cwd = fileURLToPath(new URL('../../../apps/merchant-admin/', import.meta.url));
+  const r = spawnSync(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-p', '3999', '-H', '127.0.0.1'],
+    { cwd, encoding: 'utf8', timeout: 60_000, env: { ...process.env, MC_PANEL_SERVER: '' } });
+  expect(r.status).not.toBe(0);
+  expect(r.signal).toBeNull();   // terminó por sí mismo, no por el timeout
+  expect(r.stdout + r.stderr).toContain('debe arrancarse con `node server.mjs`');
 });
