@@ -30,6 +30,7 @@ export function createAuth(opts: { mailer: Mailer; baseURL: string; secret: stri
       requireEmailVerification: true,
       minPasswordLength: 10,
       maxPasswordLength: 128,
+      revokeSessionsOnPasswordReset: true,   // RT-R1 H5
       sendResetPassword: async ({ user, url }) => opts.mailer({ to: user.email, subject: 'Restablece tu contraseña', url, kind: 'reset-password' }),
     },
     emailVerification: {

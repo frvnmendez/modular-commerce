@@ -7,7 +7,7 @@ const mailFor = async (email) => { for (let i = 0; i < 40; i++) { const m = fs.r
 (async () => {
   const b = await chromium.launch(); const errors = [];
   const ctx = await b.newContext({ viewport: { width: 1280, height: 800 } }); const p = await ctx.newPage();
-  p.on('pageerror', e => errors.push(String(e))); p.on('console', m => m.type() === 'error' && errors.push(m.text()));
+  p.on('dialog', d => d.accept()); p.on('pageerror', e => errors.push(String(e))); p.on('console', m => m.type() === 'error' && errors.push(m.text()));
   const email = `e2e-${Date.now()}@test.local`;
   await p.goto('http://localhost:3000/'); await p.waitForURL(/login/);
   await p.screenshot({ path: `${OUT}/01-login.png` });
@@ -31,6 +31,11 @@ const mailFor = async (email) => { for (let i = 0; i < 40; i++) { const m = fs.r
   await p.waitForTimeout(800); await p.screenshot({ path: `${OUT}/06-team-invite.png`, fullPage: true });
   const link = await p.locator('input[value*="/invitations/accept#"]').first().inputValue().catch(() => null);
   console.log('invite link', link);
+  const revokeEmail = `revocar-${Date.now()}@test.local`;
+  await p.getByLabel(/email/i).fill(revokeEmail); await p.getByRole('button', { name: /invitar/i }).click(); await p.waitForTimeout(800);
+  await p.locator('li', { hasText: revokeEmail }).getByRole('button', { name: 'Revocar' }).click(); await p.waitForTimeout(800);
+  console.log('revoked invitation gone', (await p.locator('li', { hasText: revokeEmail }).count()) === 0);
+  await p.screenshot({ path: `${OUT}/06b-team-revoked.png`, fullPage: true });
   await p.goto(storeUrl + '/audit'); await p.waitForTimeout(800); await p.screenshot({ path: `${OUT}/07-audit.png`, fullPage: true });
   await p.goto(storeUrl + '/products'); await p.waitForTimeout(500); await p.screenshot({ path: `${OUT}/08-empty-section.png` });
   const m = await b.newContext({ viewport: { width: 390, height: 844 }, storageState: await ctx.storageState() }); const mp = await m.newPage();

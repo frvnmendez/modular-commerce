@@ -4,20 +4,25 @@ import { createHash, randomBytes } from 'node:crypto';
 import { uuidv7 } from 'uuidv7';
 import type { Auth } from '@mc/auth';
 import {
-  ConflictError, ForbiddenError, NotFoundError, withOperator, withStore, withUser, type StoreRole,
+  ConflictError, ForbiddenError, isUuid, NotFoundError, withOperator, withStore, withUser, type StoreRole,
 } from '@mc/db';
 import {
   BusinessProfileSchema, can, capabilitiesFor, navigationFor, permissionsOf, recommendedModules, type Permission,
 } from '@mc/core';
 
-export type AppOptions = { auth: Auth; allowedOrigins: string[]; logger?: boolean };
-type SessionUser = { id: string; email: string; name: string; emailVerified: boolean };
+/**
+ * trustProxy: solo si hay un proxy conocido delante (p. ej. el balanceador). Determina req.ip, que es la IP
+ * que ve el limitador de intentos de Better Auth (RT-R1 H2). Por defecto, la IP del socket.
+ */
+export type AppOptions = { auth: Auth; allowedOrigins: string[]; logger?: boolean; trustProxy?: boolean | string | string[] };
+type SessionUser = { id: string; email: string; name: string; emailVerified: boolean; token: string };
 
 declare module 'fastify' {
   interface FastifyRequest { user?: SessionUser }
 }
 
 const INVITATION_TTL = '7 days';
+const FORWARDING_HEADERS = new Set(['x-forwarded-for', 'x-real-ip', 'forwarded', 'cf-connecting-ip', 'true-client-ip', 'x-client-ip']);
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 function requirePermission(role: StoreRole, p: Permission) {
@@ -31,7 +36,7 @@ export function buildApp(opts: AppOptions) {
       redact: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'],
     },
     bodyLimit: 256 * 1024,
-    trustProxy: false,
+    trustProxy: opts.trustProxy ?? false,
   });
 
   // Cabeceras de seguridad básicas para una API JSON.
@@ -59,7 +64,12 @@ export function buildApp(opts: AppOptions) {
     handler: async (req, reply) => {
       const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`);
       const headers = new Headers();
-      for (const [k, v] of Object.entries(req.headers)) if (v !== undefined) headers.append(k, Array.isArray(v) ? v.join(', ') : String(v));
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (v === undefined || FORWARDING_HEADERS.has(k)) continue;
+        headers.append(k, Array.isArray(v) ? v.join(', ') : String(v));
+      }
+      // La IP que ve Better Auth (límite de intentos) la decide el servidor, nunca el cliente (RT-R1 H2).
+      headers.set('x-forwarded-for', req.ip);
       const res = await opts.auth.handler(new Request(url, {
         method: req.method,
         headers,
@@ -81,7 +91,7 @@ export function buildApp(opts: AppOptions) {
     const s = await opts.auth.api.getSession({ headers });
     if (!s?.user) return reply.code(401).send({ error: 'UNAUTHENTICATED' });
     if (!s.user.emailVerified) return reply.code(403).send({ error: 'EMAIL_NOT_VERIFIED' });
-    req.user = { id: s.user.id, email: s.user.email, name: s.user.name, emailVerified: s.user.emailVerified };
+    req.user = { id: s.user.id, email: s.user.email, name: s.user.name, emailVerified: s.user.emailVerified, token: s.session.token };
   });
 
   app.setErrorHandler((err, req, reply) => {
@@ -103,7 +113,7 @@ export function buildApp(opts: AppOptions) {
   // --- Usuario y organizaciones ---------------------------------------------------------------
   app.get('/v1/me', async (req) => {
     const u = user(req);
-    return withUser(u.id, async (c) => {
+    return withUser(u.token, async (c) => {
       const orgs = await c.query(`SELECT o.id, o.name, m.role FROM control.organizations o
         JOIN control.organization_members m ON m.org_id = o.id AND m.user_id = control.current_user_id() ORDER BY o.created_at`);
       const stores = await c.query(`SELECT s.id, s.org_id AS "orgId", s.name, s.slug, m.role FROM control.stores s
@@ -116,7 +126,7 @@ export function buildApp(opts: AppOptions) {
   app.post('/v1/organizations', async (req, reply) => {
     const body = z.object({ name: z.string().trim().min(2).max(80) }).strict().parse(req.body);
     const id = uuidv7();
-    await withUser(user(req).id, (c) => c.query('SELECT control.create_organization($1, $2)', [id, body.name]));
+    await withUser(user(req).token, (c) => c.query('SELECT control.create_organization($1, $2)', [id, body.name]));
     return reply.code(201).send({ id, name: body.name });
   });
 
@@ -132,17 +142,17 @@ export function buildApp(opts: AppOptions) {
   app.post('/v1/organizations/:orgId/stores', async (req, reply) => {
     const { orgId } = z.object({ orgId: z.string() }).parse(req.params);
     const body = CreateStore.parse(req.body);
-    if (!/^[0-9a-f-]{36}$/i.test(orgId)) throw new NotFoundError();
+    if (!isUuid(orgId)) throw new NotFoundError();
     const id = uuidv7();
     const caps = capabilitiesFor(body.profile);
-    await withUser(user(req).id, (c) => c.query('SELECT control.create_store($1, $2, $3, $4, $5, $6, $7, $8)',
+    await withUser(user(req).token, (c) => c.query('SELECT control.create_store($1, $2, $3, $4, $5, $6, $7, $8)',
       [id, orgId, body.name, body.slug, body.country, body.currency, JSON.stringify(body.profile), caps]));
     return reply.code(201).send({ id, slug: body.slug, capabilities: caps, recommendedModules: recommendedModules(caps) });
   });
 
   app.get('/v1/stores/:storeId', async (req) => {
     const { storeId } = storeIdParam.parse(req.params);
-    return withStore(user(req).id, storeId, async (c, role) => {
+    return withStore(user(req).token, storeId, async (c, role) => {
       const s = await c.query('SELECT id, org_id AS "orgId", name, slug, country, currency, status, cell FROM control.stores WHERE id = $1', [storeId]);
       const st = await c.query('SELECT business_profile AS "businessProfile", capabilities FROM commerce.store_settings');
       return { ...s.rows[0], ...st.rows[0], role, permissions: permissionsOf(role) };
@@ -157,7 +167,7 @@ export function buildApp(opts: AppOptions) {
       currency: z.string().regex(/^[A-Z]{3}$/).optional(),
       capabilities: z.array(z.enum(['physical-products', 'digital-products', 'inventory', 'variants', 'shipping', 'international', 'dropshipping', 'returns'])).max(8).optional(),
     }).strict().parse(req.body);
-    return withStore(user(req).id, storeId, async (c, role) => {
+    return withStore(user(req).token, storeId, async (c, role) => {
       requirePermission(role, 'settings:write');
       if (body.name || body.country || body.currency) {
         await c.query('SELECT control.update_store($1, $2, $3, $4)', [storeId, body.name ?? null, body.country ?? null, body.currency ?? null]);
@@ -174,7 +184,7 @@ export function buildApp(opts: AppOptions) {
 
   app.get('/v1/stores/:storeId/navigation', async (req) => {
     const { storeId } = storeIdParam.parse(req.params);
-    return withStore(user(req).id, storeId, async (c, role) => {
+    return withStore(user(req).token, storeId, async (c, role) => {
       const st = await c.query('SELECT capabilities FROM commerce.store_settings');
       return { items: navigationFor(role, st.rows[0]?.capabilities ?? []) };
     });
@@ -183,7 +193,7 @@ export function buildApp(opts: AppOptions) {
   // --- Equipo, invitaciones y auditoría ------------------------------------------------------
   app.get('/v1/stores/:storeId/members', async (req) => {
     const { storeId } = storeIdParam.parse(req.params);
-    return withStore(user(req).id, storeId, async (c, role) => {
+    return withStore(user(req).token, storeId, async (c, role) => {
       requirePermission(role, 'members:read');
       const m = await c.query('SELECT user_id AS "userId", name, email, role FROM control.member_directory($1)', [storeId]);
       const inv = await c.query(`SELECT id, email, role, expires_at AS "expiresAt" FROM control.invitations
@@ -197,7 +207,7 @@ export function buildApp(opts: AppOptions) {
     const body = z.object({ email: z.email().max(254), role: z.enum(['admin', 'staff']) }).strict().parse(req.body);
     const token = randomBytes(32).toString('base64url');
     const id = uuidv7();
-    await withStore(user(req).id, storeId, async (c, role) => {
+    await withStore(user(req).token, storeId, async (c, role) => {
       requirePermission(role, 'members:invite');
       await c.query('SELECT control.create_invitation($1, $2, $3, $4, $5, $6::interval)',
         [id, storeId, body.email.toLowerCase(), body.role, sha256(token), INVITATION_TTL]);
@@ -206,10 +216,20 @@ export function buildApp(opts: AppOptions) {
     return reply.code(201).send({ id, token });
   });
 
+  app.delete('/v1/stores/:storeId/invitations/:invitationId', async (req, reply: FastifyReply) => {
+    const { storeId, invitationId } = z.object({ storeId: z.string(), invitationId: z.string() }).parse(req.params);
+    if (!isUuid(invitationId)) throw new NotFoundError();
+    await withStore(user(req).token, storeId, async (c, role) => {
+      requirePermission(role, 'members:invite');
+      await c.query('SELECT control.revoke_invitation($1, $2)', [storeId, invitationId]);
+    });
+    return reply.code(204).send();
+  });
+
   app.post('/v1/invitations/accept', async (req) => {
     const body = z.object({ token: z.string().min(20).max(200) }).strict().parse(req.body);
     const u = user(req);
-    const storeId = await withUser(u.id, async (c) =>
+    const storeId = await withUser(u.token, async (c) =>
       (await c.query('SELECT control.accept_invitation($1, $2) AS id', [sha256(body.token), u.email])).rows[0].id as string);
     return { storeId };
   });
@@ -217,7 +237,7 @@ export function buildApp(opts: AppOptions) {
   app.patch('/v1/stores/:storeId/members/:userId', async (req) => {
     const { storeId, userId } = z.object({ storeId: z.string(), userId: z.string().min(1).max(100) }).parse(req.params);
     const body = z.object({ role: z.enum(['owner', 'admin', 'staff']) }).strict().parse(req.body);
-    await withStore(user(req).id, storeId, async (c, role) => {
+    await withStore(user(req).token, storeId, async (c, role) => {
       requirePermission(role, 'members:manage');
       await c.query('SELECT control.set_member_role($1, $2, $3)', [storeId, userId, body.role]);
     });
@@ -226,13 +246,13 @@ export function buildApp(opts: AppOptions) {
 
   app.delete('/v1/stores/:storeId/members/:userId', async (req, reply: FastifyReply) => {
     const { storeId, userId } = z.object({ storeId: z.string(), userId: z.string().min(1).max(100) }).parse(req.params);
-    await withStore(user(req).id, storeId, (c) => c.query('SELECT control.remove_member($1, $2)', [storeId, userId]));
+    await withStore(user(req).token, storeId, (c) => c.query('SELECT control.remove_member($1, $2)', [storeId, userId]));
     return reply.code(204).send();
   });
 
   app.get('/v1/stores/:storeId/audit', async (req) => {
     const { storeId } = storeIdParam.parse(req.params);
-    return withStore(user(req).id, storeId, async (c, role) => {
+    return withStore(user(req).token, storeId, async (c, role) => {
       requirePermission(role, 'audit:read');
       const r = await c.query(`SELECT action, actor_user_id AS "actorUserId", target_type AS "targetType", target_id AS "targetId",
         metadata, at FROM commerce.audit_events ORDER BY at DESC, id DESC LIMIT 100`);
@@ -243,7 +263,7 @@ export function buildApp(opts: AppOptions) {
   // --- Plataforma (operadores) ---------------------------------------------------------------
   app.get('/v1/platform/stores', async (req) => {
     const u = user(req);
-    return withOperator(u.id, async (c) => {
+    return withOperator(u.token, async (c) => {
       const op = await c.query('SELECT 1 FROM control.platform_operators WHERE user_id = control.current_user_id()');
       if (!op.rowCount) throw new NotFoundError();
       await c.query("INSERT INTO control.platform_audit (operator_id, action) VALUES (control.current_user_id(), 'platform.stores.list')");

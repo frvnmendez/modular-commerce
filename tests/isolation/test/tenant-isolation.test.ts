@@ -10,7 +10,7 @@ type Client = import('@mc/commerce-api/testing').Client;
 let h: ReturnType<typeof import('@mc/commerce-api/testing').makeApp>;
 let dbName: string;
 const A = {} as { owner: Client; staff: Client; orgId: string; storeId: string };
-const B = {} as { owner: Client; staff: Client; orgId: string; storeId: string; inviteToken: string };
+const B = {} as { owner: Client; staff: Client; orgId: string; storeId: string; inviteToken: string; inviteId: string };
 let snapshotB: string;
 
 async function snapshot(storeId: string) {
@@ -43,7 +43,9 @@ beforeAll(async () => {
     const inv = await T.owner.call('POST', `/v1/stores/${T.storeId}/invitations`, { email: T.staff.email, role: 'staff' });
     await T.staff.call('POST', '/v1/invitations/accept', { token: inv.body.token });
   }
-  B.inviteToken = (await B.owner.call('POST', `/v1/stores/${B.storeId}/invitations`, { email: 'pendiente@test.local', role: 'staff' })).body.token;
+  const pending = (await B.owner.call('POST', `/v1/stores/${B.storeId}/invitations`, { email: 'pendiente@test.local', role: 'staff' })).body;
+  B.inviteToken = pending.token;
+  B.inviteId = pending.id;
   snapshotB = await snapshot(B.storeId);
 });
 
@@ -93,6 +95,7 @@ describe('Escritura sobre otra tienda', () => {
       ['PATCH', `/v1/stores/${B.storeId}/members/${A.owner.id}`, { role: 'owner' }],
       ['DELETE', `/v1/stores/${B.storeId}/members/${B.staff.id}`],
       ['DELETE', `/v1/stores/${B.storeId}/members/${B.owner.id}`],
+      ['DELETE', `/v1/stores/${B.storeId}/invitations/${B.inviteId}`],
     ];
     for (const actor of [A.owner, A.staff]) {
       for (const [m, url, body] of attempts) {
@@ -100,6 +103,9 @@ describe('Escritura sobre otra tienda', () => {
         expect({ m, url, status: r.status }).toEqual({ m, url, status: 404 });
       }
     }
+  });
+  it('A no puede revocar la invitación de B usando su propia tienda en la ruta', async () => {
+    expect((await A.owner.call('DELETE', `/v1/stores/${A.storeId}/invitations/${B.inviteId}`)).status).toBe(404);
   });
   it('A no puede crear tiendas en la organización de B', async () => {
     const r = await A.owner.call('POST', `/v1/organizations/${B.orgId}/stores`, {
@@ -132,17 +138,60 @@ describe('Capa de base de datos (lo que la API podría olvidar)', () => {
   });
   it('dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID', async () => {
     const { withStore } = await import('@mc/db');
-    const r = await withStore(A.owner.id, A.storeId, async (c) => ({
+    const r = await withStore(A.owner.token, A.storeId, async (c) => ({
       st: (await c.query('SELECT count(*)::int n FROM commerce.store_settings WHERE tenant_id = $1', [B.storeId])).rows[0].n,
       au: (await c.query('SELECT count(*)::int n FROM commerce.audit_events WHERE tenant_id = $1', [B.storeId])).rows[0].n,
       up: (await c.query('UPDATE commerce.store_settings SET capabilities = $1 WHERE tenant_id = $2', [['x'], B.storeId])).rowCount,
     }));
     expect(r).toEqual({ st: 0, au: 0, up: 0 });
   });
+  it('forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1)', async () => {
+    const { pool } = await import('@mc/db');
+    const c = await pool('app').connect();
+    try {
+      await c.query('BEGIN');
+      await c.query("SELECT set_config('app.user_id', $1, true), set_config('app.tenant_id', $2, true)", [B.owner.id, B.storeId]);
+      const r = await c.query(`SELECT (SELECT count(*) FROM commerce.store_settings)::int st, (SELECT count(*) FROM commerce.audit_events)::int au,
+        (SELECT count(*) FROM control.store_members)::int m, control.current_user_id() u, commerce.current_tenant()::text t`);
+      expect(r.rows[0]).toEqual({ st: 0, au: 0, m: 0, u: null, t: null });
+      await expect(c.query('SELECT control.enter_store($1)', [B.storeId])).rejects.toThrow(/NO_USER_CONTEXT/);
+      await c.query('ROLLBACK');
+      await c.query('BEGIN');
+      await expect(c.query('SELECT control.begin_session($1)', ['token-inventado'])).rejects.toThrow(/NO_USER_CONTEXT/);
+      await c.query('ROLLBACK');
+      await expect(c.query('SELECT * FROM control.request_context')).rejects.toThrow(/permission denied/);
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c.query('DISCARD ALL');
+      c.release();
+    }
+  });
+  it('el contexto de una transacción no sirve en la siguiente de la misma conexión', async () => {
+    const { pool } = await import('@mc/db');
+    const c = await pool('app').connect();
+    try {
+      await c.query('BEGIN');
+      await c.query('SELECT control.begin_session($1)', [A.owner.token]);
+      await c.query('SELECT control.enter_store($1)', [A.storeId]);
+      expect((await c.query('SELECT count(*)::int n FROM commerce.store_settings')).rows[0].n).toBe(1);
+      await c.query('COMMIT');
+      const r = await c.query('SELECT (SELECT count(*) FROM commerce.store_settings)::int n, control.current_user_id() u');
+      expect(r.rows[0]).toEqual({ n: 0, u: null });
+    } finally {
+      c.release();
+    }
+  });
+  it('auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6)', async () => {
+    const { withStore } = await import('@mc/db');
+    await expect(withStore(A.owner.token, A.storeId, (c) => c.query(
+      "INSERT INTO commerce.audit_events (tenant_id, actor_user_id, action) VALUES (commerce.current_tenant(), $1, 'x')", [A.staff.id]))).rejects.toThrow(/row-level security/);
+    const n = await withStore(A.staff.token, A.storeId, async (c) => (await c.query('SELECT count(*)::int n FROM control.member_directory($1)', [A.storeId])).rows[0].n);
+    expect(n).toBe(0);
+  });
   it('mc_app no puede escribir directamente en el plano de control ni borrar auditoría', async () => {
     const { withStore } = await import('@mc/db');
-    await expect(withStore(A.owner.id, A.storeId, (c) => c.query("INSERT INTO control.store_members VALUES ($1, 'x', 'owner')", [B.storeId]))).rejects.toThrow(/permission denied/);
-    await expect(withStore(A.owner.id, A.storeId, (c) => c.query('DELETE FROM commerce.audit_events'))).rejects.toThrow(/permission denied/);
+    await expect(withStore(A.owner.token, A.storeId, (c) => c.query("INSERT INTO control.store_members VALUES ($1, 'x', 'owner')", [B.storeId]))).rejects.toThrow(/permission denied/);
+    await expect(withStore(A.owner.token, A.storeId, (c) => c.query('DELETE FROM commerce.audit_events'))).rejects.toThrow(/permission denied/);
   });
   it('catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras', async () => {
     const c = adminClient();
@@ -150,7 +199,7 @@ describe('Capa de base de datos (lo que la API podría olvidar)', () => {
     try {
       const t = await c.query(`SELECT n.nspname || '.' || c.relname t, c.relrowsecurity r, c.relforcerowsecurity f, pg_get_userbyid(c.relowner) o
         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname IN ('control','commerce') AND c.relkind = 'r'`);
-      expect(t.rows.length).toBeGreaterThanOrEqual(9);
+      expect(t.rows.length).toBeGreaterThanOrEqual(10);
       for (const row of t.rows) expect({ t: row.t, r: row.r, f: row.f, o: row.o }).toEqual({ t: row.t, r: true, f: true, o: 'mc_migrator' });
       const pols = await c.query(`SELECT tablename, qual FROM pg_policies WHERE schemaname IN ('control','commerce') AND qual = 'true' AND NOT ('mc_ops' = ANY (roles))`);
       expect(pols.rows).toEqual([]);

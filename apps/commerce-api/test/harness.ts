@@ -19,7 +19,7 @@ export async function shutdown(app: { close: () => Promise<unknown> }) {
 }
 
 export type App = ReturnType<typeof makeApp>['app'];
-export type Client = { cookie: string; email: string; id: string; call: (method: string, url: string, body?: unknown, extraHeaders?: Record<string, string>) => Promise<{ status: number; body: any }> };
+export type Client = { cookie: string; email: string; id: string; token: string; call: (method: string, url: string, body?: unknown, extraHeaders?: Record<string, string>) => Promise<{ status: number; body: any }> };
 
 let seq = 0;
 /** Registra, verifica email e inicia sesión un usuario nuevo. */
@@ -43,7 +43,13 @@ export async function signUp(h: ReturnType<typeof makeApp>, name: string): Promi
     return { status: res.statusCode, body: res.body ? safeJson(res.body) : null };
   };
   const me = await call('GET', '/v1/me');
-  return { cookie, email, id: me.body.user.id, call };
+  return { cookie, email, id: me.body.user.id, token: sessionTokenOf(cookie), call };
+}
+
+/** Token de sesión tal y como lo guarda Better Auth (la cookie es `token.firma`). */
+export function sessionTokenOf(cookie: string) {
+  const v = cookie.split('; ').find((c) => c.includes('session_token='))!.split('=').slice(1).join('=');
+  return decodeURIComponent(v).split('.')[0]!;
 }
 
 const safeJson = (s: string) => { try { return JSON.parse(s); } catch { return s; } };

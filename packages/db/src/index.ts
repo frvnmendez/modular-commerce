@@ -66,24 +66,28 @@ async function transaction<T>(role: Exclude<DbRole, 'migrator'>, setup: (c: Tx) 
   }
 }
 
-const setUser = (c: Tx, userId: string) => c.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+/**
+ * Abre el contexto de la transacción con el token de sesión. La BD valida el token (sesión vigente de un usuario
+ * verificado) y guarda el usuario en control.request_context, que mc_app no puede escribir (RT-R1 H1).
+ */
+const beginSession = (c: Tx, sessionToken: string) => c.query('SELECT control.begin_session($1)', [sessionToken]).then(() => undefined);
 
 /** Operaciones del plano de control como un usuario autenticado (sin tienda). */
-export function withUser<T>(userId: string, fn: (c: Tx) => Promise<T>): Promise<T> {
-  return transaction('app', (c) => setUser(c, userId).then(() => undefined), fn).catch(mapDbError);
+export function withUser<T>(sessionToken: string, fn: (c: Tx) => Promise<T>): Promise<T> {
+  return transaction('app', (c) => beginSession(c, sessionToken), fn).catch(mapDbError);
 }
 
 /**
- * Operaciones dentro de una tienda. La BD verifica la pertenencia (control.enter_store) y fija app.tenant_id.
+ * Operaciones dentro de una tienda. La BD verifica la pertenencia (control.enter_store) y fija el tenant.
  * Si el usuario no pertenece a la tienda, lanza NotFoundError (404, nunca 403 que confirme existencia).
  */
-export function withStore<T>(userId: string, storeId: string, fn: (c: Tx, role: StoreRole) => Promise<T>): Promise<T> {
+export function withStore<T>(sessionToken: string, storeId: string, fn: (c: Tx, role: StoreRole) => Promise<T>): Promise<T> {
   let role: StoreRole = 'staff';
   return transaction(
     'app',
     async (c) => {
-      await setUser(c, userId);
       if (!isUuid(storeId)) throw new NotFoundError('STORE_NOT_FOUND');
+      await beginSession(c, sessionToken);
       const r = await c.query('SELECT control.enter_store($1) AS role', [storeId]);
       role = r.rows[0].role;
     },
@@ -92,8 +96,8 @@ export function withStore<T>(userId: string, storeId: string, fn: (c: Tx, role: 
 }
 
 /** Operaciones de plataforma (rol mc_ops). Siempre auditadas por quien llama. */
-export function withOperator<T>(userId: string, fn: (c: Tx) => Promise<T>): Promise<T> {
-  return transaction('ops', (c) => setUser(c, userId).then(() => undefined), fn).catch(mapDbError);
+export function withOperator<T>(sessionToken: string, fn: (c: Tx) => Promise<T>): Promise<T> {
+  return transaction('ops', (c) => beginSession(c, sessionToken), fn).catch(mapDbError);
 }
 
 export const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);

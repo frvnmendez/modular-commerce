@@ -46,6 +46,12 @@ export default function Team() {
     try { await api(`/v1/stores/${store.id}/members/${m.userId}`, { method: 'DELETE' }); load(); }
     catch (e) { setMsg({ kind: 'error', text: humanError(e) }); }
   }
+  async function revoke(i: Invitation) {
+    if (!confirm(`¿Revocar la invitación de ${i.email}? El enlace dejará de funcionar.`)) return;
+    try { await api(`/v1/stores/${store.id}/invitations/${i.id}`, { method: 'DELETE' }); setLink(null); load(); }
+    catch (e) { setMsg({ kind: 'error', text: humanError(e) }); }
+  }
+  const canRevoke = (i: Invitation) => store.role === 'owner' || (store.role === 'admin' && i.role === 'staff');
 
   return (
     <div className="space-y-6">
@@ -80,7 +86,12 @@ export default function Team() {
           </form>
           {invites.length > 0 && (
             <div className="mt-6"><h3 className="text-sm font-medium">Pendientes</h3>
-              <ul className="mt-2 space-y-1 text-sm text-muted">{invites.map((i) => <li key={i.id}>{i.email} · {i.role === 'admin' ? 'Administrador' : 'Personal'} · caduca {new Date(i.expiresAt).toLocaleDateString('es')}</li>)}</ul>
+              <ul className="mt-2 divide-y divide-border text-sm text-muted">{invites.map((i) => (
+                <li key={i.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <span className="min-w-0 truncate">{i.email} · {i.role === 'admin' ? 'Administrador' : 'Personal'} · caduca {new Date(i.expiresAt).toLocaleDateString('es')}</span>
+                  {canRevoke(i) && <Button variant="secondary" onClick={() => revoke(i)}>Revocar</Button>}
+                </li>
+              ))}</ul>
             </div>
           )}
         </Card>
