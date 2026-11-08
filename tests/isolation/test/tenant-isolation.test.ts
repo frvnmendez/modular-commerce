@@ -259,7 +259,7 @@ describe('Capa de base de datos (lo que la API podría olvidar)', () => {
       const w = await a.query(`SELECT r.rolname, t.tbl, has_table_privilege(r.rolname, t.tbl, 'INSERT,UPDATE,DELETE') w
         FROM (VALUES ('mc_app'), ('mc_ops'), ('mc_auth')) r(rolname),
              (VALUES ('auth."user"'), ('auth.session'), ('control.request_context')) t(tbl) ORDER BY 1, 2`);
-      const writable = w.rows.filter((x) => x.w).map((x) => `${x.rolname}:${x.tbl}`);
+      const writable = w.rows.filter((x) => x.w).map((x) => `${x.rolname}:${x.tbl}`).sort();   // orden independiente de la collation
       expect(writable).toEqual(['mc_auth:auth."user"', 'mc_auth:auth.session']);
       const pub = await a.query(`SELECT has_schema_privilege('mc_app', 'public', 'CREATE') app, has_schema_privilege('mc_auth', 'public', 'CREATE') auth,
         (SELECT count(*)::int FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.member WHERE r.rolname IN ('mc_app','mc_ops','mc_auth')) memberships`);
