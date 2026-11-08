@@ -1,0 +1,19 @@
+{
+  "name": "modular-commerce",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:bootstrap": "node infra/db/bootstrap.mjs",
+    "db:migrate": "pnpm --filter @mc/db migrate",
+    "test:isolation": "pnpm --filter @mc/isolation-tests test"
+  },
+  "devDependencies": {
+    "turbo": "2.11.10",
+    "typescript": "5.9.3"
+  }
+}
