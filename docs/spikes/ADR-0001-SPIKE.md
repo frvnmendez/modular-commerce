@@ -6,7 +6,7 @@
 
 ## Resultado
 
-**Recomendación: aceptar ADR-0001 y construir el núcleo comercial propio en R2.**
+**Decisión (2026-11-09): el propietario acepta ADR-0001. Se construye el núcleo comercial propio en R2.**
 
 - **Núcleo propio:** el prototipo de catálogo, clientes y pedidos sobre la RLS de R1 funcionó sin tocar `@mc/db` ni las migraciones de R1. Pasan 24 de 24 pruebas, y los 3 sabotajes hacen fallar la suite por la razón prevista.
 - **Vendure con plugin:** el plugin cierra la fuga de datos personales de la PoC B, pero solo impidiendo que un mismo email sea cliente de dos tiendas. Con el plugin, quien ya compró en la tienda A **no puede comprar en la tienda B** con ese email, ni con su cuenta ni como invitado. Además quedan 4 problemas de aislamiento que un plugin no puede resolver.

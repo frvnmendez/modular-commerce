@@ -1,7 +1,7 @@
 # ADR-0001 — Motor comercial: núcleo propio en TypeScript, sin Vendure ni Medusa como plano de datos
 
 - Fecha: 2026-11-08
-- Estado: **Propuesto — spike completado el 2026-11-09, pendiente de decisión del propietario** (ver §Resultado del spike)
+- Estado: **Aceptado** (decisión del propietario 2026-11-09, tras el spike; ver §Resultado del spike)
 - Responsables: CTO, Commerce Engine Architect · Revisión: Security, Red Team
 
 ## Contexto
@@ -61,4 +61,4 @@ Informe completo: `docs/spikes/ADR-0001-SPIKE.md`.
 
 - **(b) Núcleo propio:** producto, variantes, inventario, clientes, impuestos por país y pedidos sobre la RLS de R1, sin cambios en `@mc/db` ni en las migraciones de R1. Pasan 24/24 pruebas (flujo, concurrencia, aislamiento por API y con `mc_app` directo, invariantes de importes y estados), y los 3 sabotajes se detectan.
 - **(a) Vendure + plugin:** el plugin cierra la fuga de datos personales de la PoC B y una nueva (un invitado de B reescribía los datos de un cliente de A), pero solo prohibiendo que un email sea cliente de dos tiendas. Eso hace perder ventas legítimas, y quedan 4 problemas que un plugin no resuelve: credenciales compartidas, enumeración, datos globales y plugins en proceso. La consulta de licencia está redactada y sin enviar (`docs/spikes/vendure-licencia-consulta.md`).
-- **Recomendación:** aceptar esta decisión. La estimación de R2 (2–3 meses-persona) se mantiene.
+- **Decisión (2026-11-09):** el propietario acepta el núcleo propio. La estimación de R2 (2–3 meses-persona) se mantiene.
