@@ -1,0 +1,14 @@
+{
+  "name": "spike-vendure-isolation",
+  "private": true,
+  "type": "module",
+  "description": "SPIKE ADR-0001: plugin de Vendure que aísla clientes por canal. Fuera del workspace pnpm (dependencias GPLv3 aisladas).",
+  "scripts": {
+    "start": "node --experimental-strip-types src/server.ts",
+    "test": "node --experimental-strip-types test/run.ts"
+  },
+  "dependencies": {
+    "@vendure/core": "3.8.1",
+    "pg": "8.23.1"
+  }
+}

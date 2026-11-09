@@ -3,3 +3,4 @@ packages:
   - "packages/*"
   - "tests/*"
   - "spikes/*"
+  - "!spikes/vendure-isolation"
