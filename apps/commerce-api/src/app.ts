@@ -24,6 +24,11 @@ declare module 'fastify' {
 const INVITATION_TTL = '7 days';
 const FORWARDING_HEADERS = new Set(['x-forwarded-for', 'x-real-ip', 'forwarded', 'cf-connecting-ip', 'true-client-ip', 'x-client-ip']);
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+/**
+ * ¿La petición va a una ruta /v1? Se decide por la ruta que eligió el router, nunca por el texto de req.url:
+ * el router decodifica la URL (`/%761/me` llega a `/v1/me`) y req.url no (revisión final del PR #1, hallazgo 1).
+ */
+const isV1Route = (req: FastifyRequest) => req.routeOptions.url?.startsWith('/v1/') ?? false;
 
 function requirePermission(role: StoreRole, p: Permission) {
   if (!can(role, p)) throw new ForbiddenError(`MISSING_PERMISSION:${p}`);
@@ -51,7 +56,7 @@ export function buildApp(opts: AppOptions) {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return;
     const origin = req.headers.origin;
     if (origin && !opts.allowedOrigins.includes(origin)) return reply.code(403).send({ error: 'ORIGIN_NOT_ALLOWED' });
-    if (req.url.startsWith('/v1/') && req.headers['content-type']?.split(';')[0] !== 'application/json'
+    if (isV1Route(req) && req.headers['content-type']?.split(';')[0] !== 'application/json'
         && req.method !== 'DELETE') {
       return reply.code(415).send({ error: 'JSON_REQUIRED' });
     }
@@ -85,7 +90,7 @@ export function buildApp(opts: AppOptions) {
 
   // --- Sesión obligatoria para /v1 ------------------------------------------------------------
   app.addHook('preHandler', async (req, reply) => {
-    if (!req.url.startsWith('/v1/')) return;
+    if (!isV1Route(req)) return;
     const headers = new Headers();
     if (req.headers.cookie) headers.set('cookie', req.headers.cookie);
     const s = await opts.auth.api.getSession({ headers });
@@ -100,12 +105,17 @@ export function buildApp(opts: AppOptions) {
     if (err instanceof ForbiddenError) return reply.code(403).send({ error: 'FORBIDDEN', detail: err.message });
     if (err instanceof ConflictError) return reply.code(409).send({ error: 'CONFLICT', detail: err.message });
     const status = (err as { statusCode?: number }).statusCode;
+    if (status === 401) return reply.code(401).send({ error: 'UNAUTHENTICATED' });
     if (status && status < 500) return reply.code(status).send({ error: 'BAD_REQUEST' });
     req.log.error({ err }, 'error no controlado');
     return reply.code(500).send({ error: 'INTERNAL' });
   });
 
-  const user = (req: FastifyRequest) => req.user!;
+  // Si una ruta llegara aquí sin pasar por el preHandler de sesión, responde 401 en lugar de fallar con un 500.
+  const user = (req: FastifyRequest): SessionUser => {
+    if (!req.user) throw Object.assign(new Error('UNAUTHENTICATED'), { statusCode: 401 });
+    return req.user;
+  };
   const storeIdParam = z.object({ storeId: z.string() });
 
   app.get('/health', async () => ({ ok: true }));

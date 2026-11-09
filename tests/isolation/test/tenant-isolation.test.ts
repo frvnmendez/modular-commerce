@@ -189,6 +189,32 @@ describe('Capa de base de datos (lo que la API podría olvidar)', () => {
     const n = await withStore(A.staff.token, A.storeId, async (c) => (await c.query('SELECT count(*)::int n FROM control.member_directory($1)', [A.storeId])).rows[0].n);
     expect(n).toBe(0);
   });
+  it('staff con mc_app directo no puede cambiar ajustes ni escribir auditoría; el owner sí (revisión final PR#1, hallazgo 2)', async () => {
+    const { withStore } = await import('@mc/db');
+    const audit = "INSERT INTO commerce.audit_events (tenant_id, actor_user_id, action) VALUES ((SELECT commerce.current_tenant()), control.current_user_id(), 'store.updated')";
+    const before = await withStore(A.owner.token, A.storeId, async (c) => (await c.query('SELECT business_profile, capabilities FROM commerce.store_settings')).rows[0]);
+    const up = await withStore(A.staff.token, A.storeId, async (c) =>
+      (await c.query(`UPDATE commerce.store_settings SET business_profile = '{"hack":1}', capabilities = '{}'`)).rowCount);
+    expect(up).toBe(0);
+    await expect(withStore(A.staff.token, A.storeId, (c) => c.query(audit))).rejects.toThrow(/row-level security/);
+    const after = await withStore(A.owner.token, A.storeId, async (c) => (await c.query('SELECT business_profile, capabilities FROM commerce.store_settings')).rows[0]);
+    expect(after).toEqual(before);
+    // Control positivo: el owner, por la misma vía, sí puede (dentro de una transacción que se deshace).
+    const { pool } = await import('@mc/db');
+    const c = await pool('app').connect();
+    try {
+      await c.query('BEGIN');
+      await c.query('SELECT control.begin_session($1)', [A.owner.token]);
+      await c.query('SELECT control.enter_store($1)', [A.storeId]);
+      expect((await c.query('SELECT commerce.current_store_role() r')).rows[0].r).toBe('owner');
+      expect((await c.query('UPDATE commerce.store_settings SET capabilities = capabilities')).rowCount).toBe(1);
+      expect((await c.query(audit)).rowCount).toBe(1);
+    } finally {
+      await c.query('ROLLBACK');
+      await c.query('DISCARD ALL');
+      c.release();
+    }
+  });
   it('mc_app no puede aceptar una invitación dirigida a otra cuenta, aunque indique su email (PR#1 hallazgo 1)', async () => {
     const { pool } = await import('@mc/db');
     const hash = createHash('sha256').update(B.inviteToken).digest('hex');

@@ -147,3 +147,22 @@ describe('PR#1 (2ª revisión): el email verificado no se puede cambiar desde la
     expect((await attacker.call('POST', '/v1/invitations/accept', { token: inv.body.token })).status).toBe(404);
   });
 });
+
+describe('Revisión final del PR #1, hallazgo 1: el control de sesión y CSRF no depende del texto de la URL', () => {
+  // El router decodifica la ruta (`/%761/me` → `/v1/me`); antes, el preHandler miraba req.url y se lo saltaba.
+  it('una ruta /v1 escrita con %-codificación sigue exigiendo sesión (401, no 500)', async () => {
+    for (const url of ['/%761/me', '/v%31/me', `/%76%31/stores/${store.storeId}`]) {
+      const r = await h.app.inject({ method: 'GET', url });
+      expect({ url, status: r.statusCode, body: r.json() }).toEqual({ url, status: 401, body: { error: 'UNAUTHENTICATED' } });
+    }
+  });
+  it('una ruta /v1 escrita con %-codificación sigue exigiendo JSON en las mutaciones (415)', async () => {
+    const r = await h.app.inject({ method: 'POST', url: '/%761/organizations', headers: { cookie: owner.cookie, 'content-type': 'text/plain' }, payload: '{"name":"Org codificada"}' });
+    expect(r.statusCode).toBe(415);
+  });
+  it('control positivo: con sesión, la ruta codificada responde como la normal', async () => {
+    const r = await h.app.inject({ method: 'GET', url: '/%761/me', headers: { cookie: owner.cookie } });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().user.id).toBe(owner.id);
+  });
+});

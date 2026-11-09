@@ -32,7 +32,7 @@ Ninguno es superusuario. La suite de aislamiento comprueba estos atributos en el
 | `stores` | `id uuid` PK (= `tenant_id`), `org_id`, `name`, `slug` único `^[a-z0-9](?:[a-z0-9-]{1,46}[a-z0-9])$`, `country` ISO-2, `currency` ISO-4217, `cell`, `status` ∈ active/suspended/closed | miembros de la tienda; `mc_ops` todo | `create_store()`, `update_store()` |
 | `store_members` | PK (`store_id`, `user_id`), `role` ∈ owner/admin/staff | miembros de la tienda | `accept_invitation()`, `set_member_role()`, `remove_member()` |
 | `invitations` | `id`, `store_id`, `email citext`, `role` ∈ admin/staff, `token_hash` único (sha256), `expires_at`, `accepted_at`, `revoked_at` | owner/admin de la tienda | `create_invitation()`, `accept_invitation()`, `revoke_invitation()` |
-| `request_context` | (`pid`, `xid`) PK, `user_id`, `tenant_id` | nadie | `begin_session()`, `enter_store()` |
+| `request_context` | (`pid`, `xid`) PK, `user_id`, `tenant_id`, `store_role` | nadie | `begin_session()`, `enter_store()` |
 | `platform_operators` | `user_id` PK | solo la propia fila | solo administración de BD |
 | `platform_audit` | `operator_id`, `action`, `target`, `at` | `mc_ops` | `mc_ops` (solo su propio `operator_id`) |
 
@@ -80,6 +80,7 @@ Tablas de Better Auth 1.7 (`user`, `session`, `account`, `verification`). Solo `
 | `0007_red_team_r1_pass2.sql` | Políticas con `(SELECT current_tenant())` (InitPlan); trigger que revoca invitaciones de quien pierde el permiso |
 | `0008_fix_revoke_orphan_null.sql` | Corrige el trigger en `DELETE` (comparación con NULL) |
 | `0009_accept_invitation_db_email.sql` | `accept_invitation` deja de recibir el email del llamante (revisión del PR #1) |
+| `0010_store_role_in_context.sql` | Rol de tienda en `request_context`; políticas restrictivas por rol para escribir ajustes y auditoría (revisión final del PR #1) |
 | `0006_red_team_r1.sql` | Correcciones del Red Team: `request_context` y `begin_session`, bloqueos del último owner, `revoke_invitation`, actor de auditoría, directorio restringido |
 
 Las migraciones aplicadas se registran en `public.schema_migrations` con checksum; editar una ya aplicada hace fallar `migrate`.
