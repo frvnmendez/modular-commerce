@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* Tokens de diseño: una sola fuente de verdad para color, radio y espaciado. */
+:root {
+  --bg: #f7f7f5; --surface: #ffffff; --surface-2: #f1f1ee; --border: #e4e4df;
+  --text: #1c1c1a; --muted: #6b6b66; --accent: #1f6f5c; --accent-fg: #ffffff; --accent-soft: #e6f2ee;
+  --danger: #b42318; --danger-soft: #fdecea; --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121211; --surface: #1b1b19; --surface-2: #242421; --border: #30302c;
+    --text: #ededea; --muted: #a3a39c; --accent: #4fb89c; --accent-fg: #0d1f1a; --accent-soft: #17302a;
+    --danger: #f97066; --danger-soft: #3a1714;
+  }
+}
+@theme inline {
+  --color-bg: var(--bg); --color-surface: var(--surface); --color-surface-2: var(--surface-2);
+  --color-border: var(--border); --color-text: var(--text); --color-muted: var(--muted);
+  --color-accent: var(--accent); --color-accent-fg: var(--accent-fg); --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger); --color-danger-soft: var(--danger-soft);
+  --radius-card: var(--radius);
+}
+html, body { background: var(--bg); color: var(--text); }
+body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

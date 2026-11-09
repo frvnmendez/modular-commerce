@@ -1,0 +1,25 @@
+{
+  "name": "@mc/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./bootstrap": "./src/bootstrap.ts"
+  },
+  "scripts": {
+    "migrate": "node src/migrate.ts",
+    "bootstrap": "node src/bootstrap.ts",
+    "typecheck": "tsc -p .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "@types/node": "22.20.5",
+    "vitest": "5.1.0",
+    "typescript": "5.9.3"
+  }
+}

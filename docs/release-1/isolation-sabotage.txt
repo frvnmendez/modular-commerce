@@ -1,0 +1,27 @@
+# Generado en 0bcdea4 (2026-11-08T22:47:16Z): pnpm test:isolation y pnpm test:negative
+
+ ✓ test/tenant-isolation.test.ts > Lectura de recursos de otra tienda > owner y staff de A reciben 404 en todos los GET de la tienda B 35ms
+ ✓ test/tenant-isolation.test.ts > Lectura de recursos de otra tienda > /v1/me de A no menciona nada de B 7ms
+ ✓ test/tenant-isolation.test.ts > Lectura de recursos de otra tienda > IDs malformados, inyección y traversal en la ruta → 404 sin errores 500 16ms
+ ✓ test/tenant-isolation.test.ts > Lectura de recursos de otra tienda > cabeceras de tenant inventadas se ignoran 7ms
+ ✓ test/tenant-isolation.test.ts > Escritura sobre otra tienda > A no puede editar, invitar, cambiar roles ni expulsar en B (404)  86ms
+ ✓ test/tenant-isolation.test.ts > Escritura sobre otra tienda > A no puede revocar la invitación de B usando su propia tienda en la ruta 5ms
+ ✓ test/tenant-isolation.test.ts > Escritura sobre otra tienda > A no puede crear tiendas en la organización de B 5ms
+ ✓ test/tenant-isolation.test.ts > Escritura sobre otra tienda > A no puede usar la invitación pendiente de B (email distinto) 4ms
+ ✓ test/tenant-isolation.test.ts > Escritura sobre otra tienda > campos de tenant inyectados en el cuerpo se rechazan (400) 9ms
+ ✓ test/tenant-isolation.test.ts > Escritura sobre otra tienda > tras todos los ataques, la tienda B está exactamente igual 9ms
+ ✓ test/tenant-isolation.test.ts > Capa de base de datos (lo que la API podría olvidar) > mc_app sin contexto no ve ninguna fila de control ni de comercio 2ms
+ ✓ test/tenant-isolation.test.ts > Capa de base de datos (lo que la API podría olvidar) > dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID 3ms
+ ✓ test/tenant-isolation.test.ts > Capa de base de datos (lo que la API podría olvidar) > forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) 4ms
+ ✓ test/tenant-isolation.test.ts > Capa de base de datos (lo que la API podría olvidar) > el contexto de una transacción no sirve en la siguiente de la misma conexión 2ms
+ ✓ test/tenant-isolation.test.ts > Capa de base de datos (lo que la API podría olvidar) > auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) 3ms
+ ✓ test/tenant-isolation.test.ts > Capa de base de datos (lo que la API podría olvidar) > mc_app no puede aceptar una invitación dirigida a otra cuenta, aunque indique su email (PR#1 hallazgo 1) 10ms
+ ✓ test/tenant-isolation.test.ts > Capa de base de datos (lo que la API podría olvidar) > mc_app no puede suplantar la identidad del contexto ni tocar email/emailVerified (PR#1, 2ª revisión) 17ms
+ ✓ test/tenant-isolation.test.ts > Capa de base de datos (lo que la API podría olvidar) > el servidor rechaza una invitación caducada aunque el email coincida, y la acepta si sigue vigente 122ms
+ ✓ test/tenant-isolation.test.ts > Capa de base de datos (lo que la API podría olvidar) > mc_app no puede escribir directamente en el plano de control ni borrar auditoría 4ms
+ ✓ test/tenant-isolation.test.ts > Capa de base de datos (lo que la API podría olvidar) > catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras 14ms
+      Tests  20 passed (20)
+
+✓ rls-off: detectado (8 fallan, 12 pasan) — cabeceras de tenant inventadas se ignoran | mc_app sin contexto no ve ninguna fila de control ni de comercio | dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID | forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) | el contexto de una transacción no sirve en la siguiente de la misma conexión | auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) | mc_app no puede suplantar la identidad del contexto ni tocar email/emailVerified (PR#1, 2ª revisión) | catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras
+✓ permissive: detectado (8 fallan, 12 pasan) — cabeceras de tenant inventadas se ignoran | mc_app sin contexto no ve ninguna fila de control ni de comercio | dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID | forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) | el contexto de una transacción no sirve en la siguiente de la misma conexión | auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) | mc_app no puede suplantar la identidad del contexto ni tocar email/emailVerified (PR#1, 2ª revisión) | catálogo: toda tabla de control/comercio con RLS+FORCE; mc_app no es dueño ni BYPASSRLS; sin vistas inseguras
+✓ membership: detectado (9 fallan, 11 pasan) — owner y staff de A reciben 404 en todos los GET de la tienda B | IDs malformados, inyección y traversal en la ruta → 404 sin errores 500 | A no puede editar, invitar, cambiar roles ni expulsar en B (404)  | tras todos los ataques, la tienda B está exactamente igual | mc_app sin contexto no ve ninguna fila de control ni de comercio | forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1) | auditoría: no se puede firmar como otro usuario; staff no lee el directorio de emails (RT-R1 H6) | mc_app no puede aceptar una invitación dirigida a otra cuenta, aunque indique su email (PR#1 hallazgo 1) | mc_app no puede suplantar la identidad del contexto ni tocar email/emailVerified (PR#1, 2ª revisión)

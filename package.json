@@ -1,0 +1,26 @@
+{
+  "name": "modular-commerce",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "eslint .",
+    "test": "turbo run test",
+    "db:bootstrap": "pnpm --filter @mc/db bootstrap",
+    "db:migrate": "pnpm --filter @mc/db migrate",
+    "test:isolation": "pnpm --filter @mc/isolation-tests test",
+    "test:e2e": "pnpm --filter @mc/e2e e2e",
+    "test:negative": "pnpm --filter @mc/isolation-tests negative"
+  },
+  "devDependencies": {
+    "eslint": "10.14.0",
+    "turbo": "2.11.10",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1"
+  },
+  "type": "module"
+}

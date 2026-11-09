@@ -1,0 +1,19 @@
+{
+  "name": "vendure",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^26.6.6",
+    "@vendure/core": "^3.8.1",
+    "pg": "^8.23.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}

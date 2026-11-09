@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: modular_commerce
+      DATABASE_ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      DATABASE_MIGRATOR_PASSWORD: ci-migrator
+      DATABASE_APP_PASSWORD: ci-app
+      DATABASE_AUTH_PASSWORD: ci-auth
+      DATABASE_OPS_PASSWORD: ci-ops
+      AUTH_SECRET: ci-only-secret-not-used-anywhere-else-000
+      AUTH_RATE_LIMIT: "off"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - name: Base de datos (roles + migraciones)
+        run: pnpm --filter @mc/db bootstrap && pnpm db:migrate
+      - name: Tests unitarios y de API
+        run: pnpm --filter @mc/core test && pnpm --filter @mc/commerce-api test
+      - name: Suite de aislamiento (Gate C)
+        run: pnpm test:isolation
+      - name: Controles negativos (cada sabotaje DEBE hacer fallar la suite, por la razón prevista)
+        run: pnpm test:negative
+      - name: Auditoría de dependencias
+        run: pnpm audit --audit-level=high
+      - name: Compilación del panel
+        run: pnpm --filter @mc/merchant-admin build
+      - name: Navegador para E2E
+        run: pnpm --filter @mc/e2e exec playwright install --with-deps chromium
+      - name: E2E (API + panel, límite de intentos activado)
+        run: pnpm test:e2e
+      - name: Informe de Playwright
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            tests/e2e/playwright-report
+            tests/e2e/test-results
+          retention-days: 7
