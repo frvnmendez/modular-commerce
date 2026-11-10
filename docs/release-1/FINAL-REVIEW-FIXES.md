@@ -1,6 +1,6 @@
 # Revisión final del PR #1: correcciones y propuesta
 
-Revisión independiente de `33b039b`. El informe completo está en la carpeta del proyecto (`release-1/PR1-FINAL-REVIEW.md`). Aquí se recoge qué se corrige en esta rama y qué queda como propuesta.
+Revisión independiente de `33b039b`. El informe completo está en [`PR1-FINAL-REVIEW.md`](PR1-FINAL-REVIEW.md). Aquí se recoge qué se corrige en esta rama y qué queda como propuesta.
 
 ## Hallazgo 1 (media): el control de sesión y el de CSRF dependían del texto de `req.url`: **corregido**
 
