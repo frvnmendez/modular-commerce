@@ -1,6 +1,14 @@
 # Changelog
 
-## [R1] 2026-11-08 — Probado localmente
+## [Validación] 2026-11-10 — R2 congelado
+- Análisis independiente del proyecto completo (arquitectura, seguridad, pruebas ejecutadas, spike, documentación, mercado, finanzas, equipo rojo y azul). Técnica sólida; sin evidencia de demanda.
+- Decisión del propietario: congelar R2 y validar con entrevistas y preventa hasta 2026-12-15 (ver MASTER-PLAN).
+- Documentación: ADR-0001 con revisión independiente, TECH-DECISIONS y RISK-REGISTER al día, `PR1-FINAL-REVIEW.md` incorporado al repo.
+
+## [ADR-0001] 2026-11-09 — Spike y decisión
+- Spike de 3 días: prototipo del núcleo propio (`spikes/own-core`) y Vendure + plugin de aislamiento (`spikes/vendure-isolation`). ADR-0001 aceptado: núcleo propio.
+
+## [R1] 2026-11-09 — Fusionado en main (PR #1; correcciones de la revisión final en PR #2, migración 0010)
 - Segunda revisión del PR #1: el panel se niega a arrancar en producción con `next start` (se saltaba la normalización de IP); las invitaciones guardadas son una lista (dos pestañas se retoman las dos) y solo se borran ante errores definitivos; botón para cambiar de cuenta cuando la invitación es para otro email; pruebas de identidad en BD, de caducidad en servidor y 4 E2E nuevos.
 - Revisión del PR #1: `accept_invitation` toma el email verificado de la BD (0009), la invitación se retoma tras iniciar sesión o verificar el email, cadena de confianza de IP panel → API (`server.mjs`, `TRUST_PROXY`, `PANEL_TRUST_PROXY`), E2E con Playwright en CI y controles negativos que verifican el motivo del fallo.
 - Monorepo pnpm + Turborepo, TypeScript 5.9 con ejecución nativa de Node 22, ESLint con reglas que prohíben fijar el contexto de tenant fuera de `@mc/db`.

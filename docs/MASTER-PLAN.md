@@ -1,15 +1,30 @@
 # Plan maestro
 
-Estado actual: **Release 0 completado, pendiente de aprobación** (ver `docs/release-0/VERIFICATION-REPORT.md`).
+Estado actual (2026-11-10): **R0 y R1 fusionados en `main`. ADR-0001 aceptado (núcleo propio). R2 CONGELADO** por decisión del propietario hasta validar la demanda.
 
-## Decisiones que necesitan aprobación antes de R1
+## Validación antes de R2 (en curso desde 2026-11-10)
+
+Motivo: un análisis independiente (técnica, seguridad, mercado, finanzas, equipo rojo y azul) concluyó que la ingeniería es sólida pero no hay evidencia de que alguien vaya a pagar (0 entrevistas, sin precios). El Gate G se adelanta antes de R2.
+
+| Campo | Valor |
+|---|---|
+| Duración | 4–6 semanas (hasta 2026-12-15) |
+| Presupuesto | ≤ 20 h y ≤ 300 € |
+| Experimento | 15 entrevistas; landing con precio y lista de espera; plaza piloto reembolsable de 49 €; contacto con 3 agencias |
+| Seguir con R2 si | ≥ 5 compromisos con dinero (prepago o depósito), o ≥ 3 cartas de intención B2B de ≥ 49 €/mes |
+| Archivar si | < 5 compromisos con dinero el 2026-12-15 |
+| Mientras tanto | Solo higiene de documentación y arreglos de seguridad baratos; nada de código de R2 |
+
+Si R2 se descongela, su alcance recortado (R2a/R2b/R2c, 250–420 h) está en la revisión de ADR-0001.
+
+## Histórico: decisiones previas a R1 (todas resueltas)
 
 1. ADR-0001: núcleo comercial propio (no Vendure ni Medusa como plano de datos). **Propuesta revisada tras el Red Team:** empezar R1 (independiente del motor) y cerrar este ADR antes de R2 tras un spike de 3 días.
 2. ADR-0002: BD compartida con RLS forzado, organizada en celdas.
 3. ADR-0003: módulos fuera de proceso; oficiales en el monorepo usando el mismo SDK.
 4. ADR-0004: stack (pnpm+Turborepo, Fastify, Next.js, Drizzle, pg-boss, Better Auth, Zod, sin Redis en MVP).
 5. Nicho de entrada (PRODUCT-ROADMAP): hipótesis a validar con entrevistas.
-6. **Repositorio GitHub** del proyecto (bloqueante: el entorno de trabajo es efímero).
+6. Repositorio GitHub del proyecto: creado (github.com/frvnmendez/modular-commerce).
 
 ## Gates
 
@@ -37,7 +52,9 @@ Estado actual: **Release 0 completado, pendiente de aprobación** (ver `docs/rel
 | R8 Hardening | Seguridad, carga, resiliencia, observabilidad, backups | Todos |
 | R9 Piloto | 3–5 comercios reales controlados | R8 + aprobación expresa |
 
-## Release 1 — Criterios de aceptación
+## Release 1 — Criterios de aceptación (fusionado el 2026-11-09)
+
+Estado verificado el 2026-11-10: 9 cumplidos, 4 parciales (invitar como owner no está permitido; Secure/hash sin prueba explícita; documentación con desfases; panel de plataforma como ruta `/platform`) y 1 no cumplido (no hay Docker Compose; en la nube se usan servicios locales). Las casillas de abajo se conservan como estaban.
 
 Funcionales:
 - [ ] Un usuario se registra con email y contraseña (verificación de email en local con buzón de pruebas), inicia y cierra sesión.

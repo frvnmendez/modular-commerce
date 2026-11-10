@@ -19,7 +19,7 @@ Necesitamos un plano de datos de comercio para miles de tiendas independientes c
 | Bagisto | MIT | PHP; el módulo SaaS es un producto de pago de Webkul (1.199 USD) con BD compartida |
 | **Núcleo propio (modular monolith TS + PostgreSQL RLS)** | Aislamiento diseñado desde el primer día (PoC A: 15/15 + control negativo). Control total del modelo de datos, licencias limpias, un solo stack | Hay que construir el dominio comercial. Riesgo de errores en impuestos, promociones y estados de pedido |
 
-## Decisión propuesta
+## Decisión
 
 Construir un **núcleo comercial propio** como módulos internos de un monolito modular en TypeScript sobre PostgreSQL con RLS obligatorio, con alcance de MVP acotado:
 - Catálogo (productos, variantes, colecciones), inventario de una ubicación, carrito, checkout, pedidos, clientes, descuentos simples.
@@ -53,7 +53,7 @@ El revisor independiente objetó que el híbrido Medusa se descartó sin PoC y s
 - **Vendure + plugin que aísle clientes por canal:** plausible y no probado. Sigue sin resolver los plugins en proceso, las entidades fiscales globales y la ambigüedad GPLv3/SaaS, pero es la alternativa barata más seria.
 - **Estimación del núcleo propio (confianza baja):** el alcance de R2 (catálogo con variantes, inventario de una ubicación, carrito, checkout con Stripe test, pedidos con máquina de estados, clientes, descuentos simples, impuestos por tabla) se estima en **2–3 meses-persona** con desarrollo asistido por IA. Con Vendure, R2 sería ≈1 mes de integración más el endurecimiento de aislamiento, sin contar el riesgo de licencia.
 
-**Propuesta revisada:** el Release 1 (cuentas, organizaciones, tiendas, RBAC, plano de control) es el mismo con cualquier motor. Se puede empezar R1 ya y decidir este ADR antes de R2 tras un spike de 3 días: (a) plugin de Vendure que aísle clientes por canal + respuesta escrita de Vendure GmbH sobre SaaS; (b) prototipo del núcleo propio con producto+variante+pedido sobre RLS para medir velocidad real.
+**Propuesta revisada (histórica, ya ejecutada):** el Release 1 (cuentas, organizaciones, tiendas, RBAC, plano de control) es el mismo con cualquier motor. Se puede empezar R1 ya y decidir este ADR antes de R2 tras un spike de 3 días: (a) plugin de Vendure que aísle clientes por canal + respuesta escrita de Vendure GmbH sobre SaaS; (b) prototipo del núcleo propio con producto+variante+pedido sobre RLS para medir velocidad real.
 
 ## Resultado del spike (2026-11-09)
 
@@ -62,3 +62,13 @@ Informe completo: `docs/spikes/ADR-0001-SPIKE.md`.
 - **(b) Núcleo propio:** producto, variantes, inventario, clientes, impuestos por país y pedidos sobre la RLS de R1, sin cambios en `@mc/db` ni en las migraciones de R1. Pasan 24/24 pruebas (flujo, concurrencia, aislamiento por API y con `mc_app` directo, invariantes de importes y estados), y los 3 sabotajes se detectan.
 - **(a) Vendure + plugin:** el plugin cierra la fuga de datos personales de la PoC B y una nueva (un invitado de B reescribía los datos de un cliente de A), pero solo prohibiendo que un email sea cliente de dos tiendas. Eso hace perder ventas legítimas, y quedan 4 problemas que un plugin no resuelve: credenciales compartidas, enumeración, datos globales y plugins en proceso. La consulta de licencia está redactada y sin enviar (`docs/spikes/vendure-licencia-consulta.md`).
 - **Decisión (2026-11-09):** el propietario acepta el núcleo propio. La estimación de R2 (2–3 meses-persona) se mantiene.
+
+## Revisión independiente (2026-11-10)
+
+Un análisis posterior (8 revisores independientes) mantiene la decisión como defendible, con tres matices:
+
+- El spike comparó de forma asimétrica: en Vendure se probó la identidad del comprador (registro, login, checkout de invitado); en el núcleo propio todos los pedidos los crea el staff. La identidad y el contexto del comprador siguen **sin diseñar** y el contexto de BD de R1 solo admite sesiones de staff.
+- La estimación de R2 se recalcula en **410–765 h** (≈2,6–4,8 meses-persona), 250–420 h con alcance recortado (checkout solo de invitado con Stripe Checkout hospedado, sin descuentos, devoluciones parciales ni facturas propias).
+- Antes de convertir `spikes/own-core/sql/0100` en migración: crear pedidos solo con una función `place_order` (hoy `mc_app` puede insertar pedidos en cualquier estado), auditar desde funciones del dueño y quitar los casts `::int` de importes.
+
+**R2 está congelado desde 2026-11-10** por decisión del propietario hasta validar la demanda (ver `docs/MASTER-PLAN.md`).
