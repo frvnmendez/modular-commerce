@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError, humanError } from '@/lib/api';
-import { Button, EmptyState } from '@/components/ui';
+import { Button, Card, EmptyState } from '@/components/ui';
 import { clearPendingInvite, readPendingInvite, savePendingInvite } from '@/lib/pending-invite';
 
 type Failure = { title: string; body: string; kind: 'definitive' | 'transient' };
@@ -65,7 +65,7 @@ export default function AcceptInvitation() {
     const action = failure.kind === 'transient'
       ? <Button onClick={() => setAttempt((n) => n + 1)}>Reintentar</Button>
       : token ? <Button variant="secondary" onClick={switchAccount}>Cerrar sesión y usar otra cuenta</Button> : undefined;
-    return <main className="p-6"><EmptyState title={failure.title} body={failure.body} action={action} /></main>;
+    return <main className="mx-auto max-w-lg px-4 py-16"><Card><EmptyState title={failure.title} body={failure.body} action={action} /></Card></main>;
   }
   return <p className="p-8 text-sm text-muted" role="status">Aceptando invitación…</p>;
 }
