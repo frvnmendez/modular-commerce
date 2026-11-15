@@ -49,6 +49,8 @@ jobs:
         run: pnpm test:isolation
       - name: Controles negativos (cada sabotaje DEBE hacer fallar la suite, por la razón prevista)
         run: pnpm test:negative
+      - name: Spike ADR-0001 — núcleo propio (pruebas y sabotajes)
+        run: pnpm --filter @mc/spike-own-core test && pnpm --filter @mc/spike-own-core negative
       - name: Auditoría de dependencias
         run: pnpm audit --audit-level=high
       - name: Compilación del panel

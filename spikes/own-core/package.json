@@ -1,0 +1,26 @@
+{
+  "name": "@mc/spike-own-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SPIKE ADR-0001: prototipo del núcleo comercial propio sobre la base de R1. No es código de producción.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p .",
+    "negative": "node negative-controls.mjs"
+  },
+  "dependencies": {
+    "@mc/commerce-api": "workspace:*",
+    "@mc/db": "workspace:*",
+    "fastify": "5.12.8",
+    "pg": "8.23.1",
+    "uuidv7": "1.2.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "@types/node": "22.20.5",
+    "vitest": "5.1.0",
+    "typescript": "5.9.3"
+  }
+}

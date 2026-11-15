@@ -1,0 +1,2 @@
+{"concurrencia":1,"pedidos":400,"pedidosPorSegundo":116,"msPorPedido":8.6,"xidsPorPedido":1.03,"getProductoMs":3.8}
+{"concurrencia":10,"pedidos":400,"pedidosPorSegundo":214,"msPorPedido":4.7,"xidsPorPedido":1,"getProductoMs":3.5}

@@ -1,0 +1,12 @@
+OK            | F1 mismo email registrado en A y B: B ve la dirección que guardó A | {"registroEnB":{"data":{"registerCustomerAccount":{"__typename":"Success"}}},"mismoId":false,"direccionesQueVeB":null}
+FUGA          | F2 credenciales de A sirven para entrar en la tienda B | {"loginConClaveDeB":"InvalidCredentialsError","loginConClaveDeA":"CurrentUser"}
+OK            | F3 sesión de A usada en B: la tienda B (tienda o admin) ve direcciones guardadas en A | {"pedidoEnB":{"__typename":"Order","code":"A1B877MYUNRJ73SQ"},"enLaTiendaB":{"activeCustomer":null,"activeOrder":{"code":"A1B877MYUNRJ73SQ","customer":null}},"adminDeB":[{"code":"A1B877MYUNRJ73SQ","customer":null}]}
+VENTA PERDIDA | F9 María (cliente de A) no puede completar una compra en B con su cuenta | {"setCustomerForOrder":{"__typename":"AlreadyLoggedInError","errorCode":"ALREADY_LOGGED_IN_ERROR"},"pasarAPago":{"__typename":"OrderStateTransitionError","transitionError":"Cannot transition Order to the \"ArrangingPayment\" state without Customer details"}}
+OK            | F1b tras iniciar sesión en B, el admin de B ve el cliente de A y su dirección | {"mismoIdQueEnA":null,"direccionesQueVeB":null}
+OK            | F4 checkout de invitado en B reescribe nombre y teléfono del cliente de A | {"checkoutA":"Order","checkoutB":[{"message":"CUSTOMER_BELONGS_TO_ANOTHER_STORE","locations":[{"line":1,"column":35}],"path":["setCustomerForOrder"]}],"clienteDeAhora":{"firstName":"Lucía","phone":"+34 600 000 001"}}
+VENTA PERDIDA | F4b checkout de invitado en B con email ya usado en A: se pierde la venta en B | {"checkoutB":[{"message":"CUSTOMER_BELONGS_TO_ANOTHER_STORE","locations":[{"line":1,"column":35}],"path":["setCustomerForOrder"]}]}
+FUGA          | F5 alta de cliente en B responde distinto si el email ya es cliente de otra tienda (enumeración) | {"emailDeA":"CUSTOMER_BELONGS_TO_ANOTHER_STORE","emailNuevo":"Customer"}
+FUGA          | F6 países, zonas e impuestos globales visibles desde la tienda A | {"countries":{"totalItems":1},"zones":{"totalItems":1},"taxCategories":{"totalItems":1},"taxRates":{"totalItems":1}}
+FUGA          | F7 un plugin (mismo proceso) lee los clientes de todas las tiendas sin pasar por permisos | {"n":3,"emails":3}
+OK            | F8 IDs de cliente secuenciales y compartidos entre tiendas | {"idClienteA":"5f312ec0-c9ed-491e-bdd1-bfaf727ae8c9"}
+{"modo":"on","rssMB":251,"fugas":["F2","F5","F6","F7"],"ventasPerdidas":["F9","F4b"]}
