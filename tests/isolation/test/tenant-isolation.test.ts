@@ -10,8 +10,15 @@ import { adminClient, dropDatabase, freshDatabase, sabotage } from './fresh-db.t
 type Client = import('@mc/commerce-api/testing').Client;
 let h: ReturnType<typeof import('@mc/commerce-api/testing').makeApp>;
 let dbName: string;
-const A = {} as { owner: Client; staff: Client; orgId: string; storeId: string };
-const B = {} as { owner: Client; staff: Client; orgId: string; storeId: string; inviteToken: string; inviteId: string };
+type Sales = { slug: string; productId: string; variantId: string; orderId: string; orderToken: string };
+const A = {} as { owner: Client; staff: Client; orgId: string; storeId: string } & Sales;
+const B = {} as { owner: Client; staff: Client; orgId: string; storeId: string; inviteToken: string; inviteId: string } & Sales;
+const pub = async (method: string, url: string, body?: unknown) => {
+  const r = await h.app.inject({ method: method as 'GET', url, headers: { origin: 'http://localhost:3000', ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
+    ...(body !== undefined ? { payload: JSON.stringify(body) } : {}) });
+  return { status: r.statusCode, body: r.body ? JSON.parse(r.body) : null };
+};
+const CUSTOMER = { email: 'iso@example.com', name: 'Iso', address: { line1: 'Calle 1', city: 'Madrid', postalCode: '28001' } };
 let snapshotB: string;
 
 async function snapshot(storeId: string) {
@@ -24,6 +31,11 @@ async function snapshot(storeId: string) {
       c.query('SELECT email, role, accepted_at, revoked_at FROM control.invitations WHERE store_id = $1 ORDER BY id', [storeId]),
       c.query('SELECT business_profile, capabilities FROM commerce.store_settings WHERE tenant_id = $1', [storeId]),
       c.query('SELECT count(*)::int FROM commerce.audit_events WHERE tenant_id = $1', [storeId]),
+      c.query('SELECT title, handle, status, description FROM commerce.products WHERE tenant_id = $1 ORDER BY id', [storeId]),
+      c.query('SELECT v.title, v.price_amount, i.on_hand FROM commerce.product_variants v JOIN commerce.inventory_levels i ON i.variant_id = v.id WHERE v.tenant_id = $1 ORDER BY v.id', [storeId]),
+      c.query('SELECT number, status, total, payment_session_id FROM commerce.orders WHERE tenant_id = $1 ORDER BY id', [storeId]),
+      c.query('SELECT count(*)::int FROM commerce.product_images WHERE tenant_id = $1', [storeId]),
+      c.query('SELECT storefront_published, shipping_flat_amount FROM commerce.store_settings WHERE tenant_id = $1', [storeId]),
     ]);
     return JSON.stringify(parts.map((p) => p.rows));
   } finally {
@@ -39,7 +51,13 @@ beforeAll(async () => {
   await h.app.ready();
   for (const [T, tag] of [[A, 'a'], [B, 'b']] as const) {
     T.owner = await t.signUp(h, `Owner${tag}`);
-    Object.assign(T, await t.createStore(T.owner, `iso-${tag}-${Date.now().toString(36)}`));
+    T.slug = `iso-${tag}-${Date.now().toString(36)}`;
+    Object.assign(T, await t.createStore(T.owner, T.slug));
+    await T.owner.call('PATCH', `/v1/stores/${T.storeId}/sales-settings`, { storefrontPublished: true, shippingFlatAmount: 100 });
+    const p = await T.owner.call('POST', `/v1/stores/${T.storeId}/products`, { title: `Producto ${tag}`, status: 'active', variants: [{ title: 'Única', price: 1000, stock: 5 }] });
+    T.productId = p.body.id; T.variantId = p.body.variants[0].id;
+    const co = await pub('POST', `/public/stores/${T.slug}/checkout`, { lines: [{ variantId: T.variantId, quantity: 1 }], customer: CUSTOMER });
+    T.orderId = co.body.orderId; T.orderToken = new URL(co.body.redirectUrl).searchParams.get('t')!;
     T.staff = await t.signUp(h, `Staff${tag}`);
     const inv = await T.owner.call('POST', `/v1/stores/${T.storeId}/invitations`, { email: T.staff.email, role: 'staff' });
     await T.staff.call('POST', '/v1/invitations/accept', { token: inv.body.token });
@@ -134,8 +152,10 @@ describe('Capa de base de datos (lo que la API podría olvidar)', () => {
     const counts = await pool('app').query(`SELECT
       (SELECT count(*) FROM control.stores)::int s, (SELECT count(*) FROM control.store_members)::int m,
       (SELECT count(*) FROM control.invitations)::int i, (SELECT count(*) FROM commerce.store_settings)::int st,
-      (SELECT count(*) FROM commerce.audit_events)::int a, (SELECT count(*) FROM control.organizations)::int o`);
-    expect(counts.rows[0]).toEqual({ s: 0, m: 0, i: 0, st: 0, a: 0, o: 0 });
+      (SELECT count(*) FROM commerce.audit_events)::int a, (SELECT count(*) FROM control.organizations)::int o,
+      (SELECT count(*) FROM commerce.products)::int p, (SELECT count(*) FROM commerce.orders)::int ord,
+      (SELECT count(*) FROM commerce.customers)::int cu, (SELECT count(*) FROM commerce.order_lines)::int l`);
+    expect(counts.rows[0]).toEqual({ s: 0, m: 0, i: 0, st: 0, a: 0, o: 0, p: 0, ord: 0, cu: 0, l: 0 });
   });
   it('dentro de la tienda A, una consulta directa no devuelve filas de B aunque se pidan por ID', async () => {
     const { withStore } = await import('@mc/db');
@@ -143,8 +163,13 @@ describe('Capa de base de datos (lo que la API podría olvidar)', () => {
       st: (await c.query('SELECT count(*)::int n FROM commerce.store_settings WHERE tenant_id = $1', [B.storeId])).rows[0].n,
       au: (await c.query('SELECT count(*)::int n FROM commerce.audit_events WHERE tenant_id = $1', [B.storeId])).rows[0].n,
       up: (await c.query('UPDATE commerce.store_settings SET capabilities = $1 WHERE tenant_id = $2', [['x'], B.storeId])).rowCount,
+      pr: (await c.query('SELECT count(*)::int n FROM commerce.products WHERE id = $1', [B.productId])).rows[0].n,
+      or: (await c.query('SELECT count(*)::int n FROM commerce.orders WHERE id = $1', [B.orderId])).rows[0].n,
+      cu: (await c.query('SELECT count(*)::int n FROM commerce.customers WHERE tenant_id = $1', [B.storeId])).rows[0].n,
+      stock: (await c.query('UPDATE commerce.inventory_levels SET on_hand = 0 WHERE variant_id = $1', [B.variantId])).rowCount,
+      ship: (await c.query(`UPDATE commerce.orders SET status = 'fulfilled' WHERE id = $1`, [B.orderId])).rowCount,
     }));
-    expect(r).toEqual({ st: 0, au: 0, up: 0 });
+    expect(r).toEqual({ st: 0, au: 0, up: 0, pr: 0, or: 0, cu: 0, stock: 0, ship: 0 });
   });
   it('forjar el contexto con set_config no da acceso a otra tienda (RT-R1 H1)', async () => {
     const { pool } = await import('@mc/db');
@@ -334,7 +359,12 @@ describe('Capa de base de datos (lo que la API podría olvidar)', () => {
       const tp = await c.query(`SELECT tablename, qual FROM pg_policies WHERE schemaname = 'commerce' AND policyname = 'tenant_isolation'`);
       expect(tp.rows.length).toBeGreaterThanOrEqual(2);
       for (const r of tp.rows) expect({ t: r.tablename, ok: /\(\s*SELECT commerce\.current_tenant\(\)/i.test(r.qual) }).toEqual({ t: r.tablename, ok: true });
-      const roles = await c.query(`SELECT rolname, rolbypassrls, rolsuper FROM pg_roles WHERE rolname IN ('mc_app','mc_auth','mc_ops') ORDER BY 1`);
+      const roles = await c.query(`SELECT rolname, rolbypassrls, rolsuper FROM pg_roles WHERE rolname IN ('mc_app','mc_auth','mc_ops','mc_storefront','mc_payments') ORDER BY 1`);
+      expect(roles.rows.length).toBe(5);
+      // Los roles públicos (comprador y avisos de pago) no tienen ningún privilegio sobre tablas.
+      const pubGrants = await c.query(`SELECT grantee, table_schema, table_name, privilege_type FROM information_schema.role_table_grants
+        WHERE grantee IN ('mc_storefront','mc_payments')`);
+      expect(pubGrants.rows).toEqual([]);
       for (const r of roles.rows) expect({ n: r.rolname, b: r.rolbypassrls, s: r.rolsuper }).toEqual({ n: r.rolname, b: false, s: false });
       const views = await c.query(`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname IN ('control','commerce','auth') AND c.relkind IN ('v','m') AND NOT coalesce('security_invoker=true' = ANY (c.reloptions), false)`);
@@ -342,10 +372,70 @@ describe('Capa de base de datos (lo que la API podría olvidar)', () => {
       const authAccess = await c.query(`SELECT has_table_privilege('mc_app', 'auth."user"', 'SELECT') u, has_table_privilege('mc_app', 'auth.session', 'SELECT') s`);
       expect(authAccess.rows[0]).toEqual({ u: false, s: false });
       const definers = await c.query(`SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname IN ('control','commerce') AND p.prosecdef AND NOT EXISTS (SELECT 1 FROM unnest(p.proconfig) cfg WHERE cfg LIKE 'search_path=%')`);
+        WHERE n.nspname IN ('control','commerce','storefront','payments') AND p.prosecdef AND NOT EXISTS (SELECT 1 FROM unnest(p.proconfig) cfg WHERE cfg LIKE 'search_path=%')`);
       expect(definers.rows).toEqual([]);
     } finally {
       await c.end();
     }
+  });
+});
+
+describe('Venta (Hito 1): catálogo, pedidos y escaparate de otra tienda', () => {
+  let before: string;
+  beforeAll(async () => { before = await snapshot(B.storeId); });   // otras pruebas cambian B legítimamente antes
+  it('A no ve los productos ni los pedidos de B, ni por la tienda de B ni por la suya', async () => {
+    for (const actor of [A.owner, A.staff]) {
+      for (const url of [
+        `/v1/stores/${B.storeId}/products`, `/v1/stores/${B.storeId}/products/${B.productId}`, `/v1/stores/${B.storeId}/orders`,
+        `/v1/stores/${B.storeId}/orders/${B.orderId}`, `/v1/stores/${B.storeId}/sales-settings`,
+        `/v1/stores/${A.storeId}/products/${B.productId}`, `/v1/stores/${A.storeId}/orders/${B.orderId}`,
+      ]) {
+        const r = await actor.call('GET', url);
+        expect({ url, status: r.status }).toEqual({ url, status: 404 });
+      }
+    }
+  });
+
+  it('A no puede editar, borrar ni gestionar productos y pedidos de B (404)', async () => {
+    const body = { title: 'Hackeado', status: 'active', variants: [{ title: 'X', price: 1, stock: 999 }] };
+    const attempts: [string, string, unknown?][] = [
+      ['PUT', `/v1/stores/${B.storeId}/products/${B.productId}`, body],
+      ['PUT', `/v1/stores/${A.storeId}/products/${B.productId}`, body],
+      ['DELETE', `/v1/stores/${B.storeId}/products/${B.productId}`],
+      ['DELETE', `/v1/stores/${A.storeId}/products/${B.productId}`],
+      ['POST', `/v1/stores/${B.storeId}/products`, body],
+      ['PATCH', `/v1/stores/${B.storeId}/sales-settings`, { storefrontPublished: false }],
+      ['POST', `/v1/stores/${A.storeId}/orders/${B.orderId}/cancel`, {}],
+      ['POST', `/v1/stores/${B.storeId}/orders/${B.orderId}/cancel`, {}],
+      ['POST', `/v1/stores/${A.storeId}/orders/${B.orderId}/refund`, {}],
+      ['POST', `/v1/stores/${A.storeId}/orders/${B.orderId}/fulfill`, {}],
+    ];
+    for (const [m, url, b] of attempts) {
+      const r = await A.owner.call(m, url, b);
+      expect({ m, url, status: r.status }).toEqual({ m, url, status: 404 });
+    }
+    // Reutilizar en A el id de una variante de B: no la «adopta» ni la toca.
+    const steal = await A.owner.call('PUT', `/v1/stores/${A.storeId}/products/${A.productId}`, { title: 'A', status: 'active', variants: [{ id: B.variantId, title: 'X', price: 1, stock: 1 }] });
+    expect(steal.status).toBe(404);
+    const img = await h.app.inject({ method: 'POST', url: `/v1/stores/${A.storeId}/products/${B.productId}/images`,
+      headers: { cookie: A.owner.cookie, origin: 'http://localhost:3000', 'content-type': 'image/png' },
+      payload: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(16)]) });
+    expect(img.statusCode).toBe(404);
+  });
+
+  it('el escaparate de A no vende, enseña ni resume nada de B', async () => {
+    const co = await pub('POST', `/public/stores/${A.slug}/checkout`, { lines: [{ variantId: B.variantId, quantity: 1 }], customer: CUSTOMER });
+    expect(co.status).toBe(404);
+    const mixed = await pub('POST', `/public/stores/${A.slug}/checkout`, { lines: [{ variantId: A.variantId, quantity: 1 }, { variantId: B.variantId, quantity: 1 }], customer: CUSTOMER });
+    expect(mixed.status).toBe(404);
+    expect((await pub('GET', `/public/stores/${A.slug}/products/producto-b`)).status).toBe(404);
+    expect((await pub('GET', `/public/stores/${A.slug}/orders/${B.orderId}?t=${B.orderToken}`)).status).toBe(404);
+    const listA = JSON.stringify((await pub('GET', `/public/stores/${A.slug}/products`)).body);
+    expect(listA).not.toContain(B.storeId);
+    expect(listA).not.toContain('producto-b');
+  });
+
+  it('tras todos los ataques de venta, la tienda B sigue exactamente igual', async () => {
+    expect(await snapshot(B.storeId)).toBe(before);
   });
 });
