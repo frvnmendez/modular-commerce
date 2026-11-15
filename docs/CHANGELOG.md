@@ -1,5 +1,13 @@
 # Changelog
 
+## [Hito 1] 2026-11-15 — Probado localmente (sin desplegar)
+- Núcleo de venta (migración 0011): productos con opciones, precio en céntimos, stock, fotos; ajustes de venta (publicar tienda, envío fijo y gratis desde, IVA, email de avisos); clientes, pedidos con numeración por tienda y reserva de stock de 32 min; moneda bloqueada en cuanto hay productos.
+- Contexto v2: roles `mc_storefront` y `mc_payments` sin permisos sobre tablas, solo `EXECUTE` en funciones `SECURITY DEFINER` con `search_path` fijado. `mc_app` ya no puede crear pedidos ni marcarlos como pagados; solo `payments.mark_paid` comprueba proveedor, sesión, importe y moneda. Transiciones de estado vigiladas por trigger.
+- Pagos: Stripe Checkout por REST (sin SDK) con claves de idempotencia, avisos firmados (HMAC, 5 min) e idempotentes, pago tardío → reembolso automático, reembolsos desde el panel. Pago simulado para desarrollo, prohibido en producción. Claves reales exigen `ALLOW_LIVE_PAYMENTS=1`.
+- API: catálogo, fotos (bytes mágicos, 5 MB, máx. 10), pedidos (enviar, cancelar, reembolsar), tienda pública (`/public/stores/:slug/...`), límite por IP en compra y lectura pública.
+- Panel: productos (lista y editor con fotos y opciones), pedidos (pestañas y detalle), ajustes de venta, guía de inicio con pasos reales. Tienda pública en `/tienda/<slug>`: catálogo, producto, carrito, pago y página del pedido.
+- Pruebas: 68 de API, 25 de aislamiento (incluida la venta entre tiendas) y E2E `r2-tienda.spec.ts` con el recorrido completo en navegador. Guía de despliegue en VPS: `docs/DEPLOYMENT-VPS.md`.
+
 ## [R1] 2026-11-08 — Probado localmente
 - Segunda revisión del PR #1: el panel se niega a arrancar en producción con `next start` (se saltaba la normalización de IP); las invitaciones guardadas son una lista (dos pestañas se retoman las dos) y solo se borran ante errores definitivos; botón para cambiar de cuenta cuando la invitación es para otro email; pruebas de identidad en BD, de caducidad en servidor y 4 E2E nuevos.
 - Revisión del PR #1: `accept_invitation` toma el email verificado de la BD (0009), la invitación se retoma tras iniciar sesión o verificar el email, cadena de confianza de IP panel → API (`server.mjs`, `TRUST_PROXY`, `PANEL_TRUST_PROXY`), E2E con Playwright en CI y controles negativos que verifican el motivo del fallo.

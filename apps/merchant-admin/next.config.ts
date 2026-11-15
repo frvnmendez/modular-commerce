@@ -5,10 +5,14 @@ const api = process.env.API_URL ?? 'http://127.0.0.1:4000';
 
 // El panel y la API comparten origen vía rewrites: las cookies de sesión son de primera parte (SameSite=Lax).
 const config: NextConfig = {
+  images: { unoptimized: true },
   async rewrites() {
     return [
       { source: '/api/auth/:path*', destination: `${api}/api/auth/:path*` },
       { source: '/v1/:path*', destination: `${api}/v1/:path*` },
+      // Escaparate público: datos de la tienda, compra e imágenes de producto.
+      { source: '/public/:path*', destination: `${api}/public/:path*` },
+      { source: '/media/:path*', destination: `${api}/media/:path*` },
     ];
   },
   async headers() {

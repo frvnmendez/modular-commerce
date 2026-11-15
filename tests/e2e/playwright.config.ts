@@ -12,7 +12,8 @@ export const OUTBOX = fileURLToPath(new URL('./test-results/outbox.jsonl', impor
 rmSync(OUTBOX, { force: true });
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const env = { ...process.env, AUTH_RATE_LIMIT: 'on', TRUST_PROXY: '127.0.0.1', PANEL_TRUST_PROXY: '', MAIL_OUTBOX_FILE: OUTBOX,
-  AUTH_BASE_URL: 'http://localhost:3000', ALLOWED_ORIGINS: 'http://localhost:3000' } as Record<string, string>;
+  AUTH_BASE_URL: 'http://localhost:3000', ALLOWED_ORIGINS: 'http://localhost:3000',
+  PAYMENTS_PROVIDER: 'fake', STRIPE_SECRET_KEY: '', UPLOAD_DIR: fileURLToPath(new URL('./test-results/uploads', import.meta.url)) } as Record<string, string>;
 
 export default defineConfig({
   testDir: './specs',
