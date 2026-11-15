@@ -53,12 +53,15 @@ test('propietario: registro, verificación, onboarding y panel', async ({ browse
   await tab.close();
   await owner.goto('/onboarding');
   await owner.getByLabel('Nombre de la tienda').fill(`Moda E2E ${Date.now().toString(36)}`);
+  await owner.getByRole('button', { name: 'Continuar' }).click();   // paso 2: qué vendes
+  await owner.getByRole('button', { name: 'Continuar' }).click();   // paso 3: objetivos
   await owner.getByRole('button', { name: 'Crear tienda' }).click();
   await owner.getByRole('button', { name: 'Ir al panel' }).click();
   await expect(owner).toHaveURL(/\/stores\/[0-9a-f-]{36}$/);
   storeUrl = new URL(owner.url()).pathname;
   storeId = storeUrl.split('/').pop()!;
-  await expect(owner.getByRole('heading', { name: /Hola, bienvenido/ })).toBeVisible();
+  await expect(owner.getByRole('heading', { name: 'Hola, Olga' })).toBeVisible();
+  await expect(owner.getByRole('heading', { name: 'Guía de configuración' })).toBeVisible();
   expect(await navLabels(owner)).toEqual(expect.arrayContaining(['Equipo', 'Actividad', 'Ajustes']));
   expect(w.unexpected).toEqual([]);
 });
