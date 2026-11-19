@@ -3,12 +3,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { addToCart, MAX_PER_ITEM } from '@/lib/cart';
 import { formatMoney } from '@/lib/money';
+import { useStoreBase } from '@/lib/store-base';
 import type { PublicProduct } from '@/lib/storefront-server';
 
 export function AddToCart({ slug, currency, product }: { slug: string; currency: string; product: PublicProduct }) {
   const firstAvailable = product.variants.find((v) => v.available > 0) ?? product.variants[0];
   const [variantId, setVariantId] = useState(firstAvailable?.id ?? '');
   const [qty, setQty] = useState(1);
+  const base = useStoreBase();
   const [added, setAdded] = useState(false);
   const v = product.variants.find((x) => x.id === variantId);
   if (!v) return null;
@@ -49,7 +51,7 @@ export function AddToCart({ slug, currency, product }: { slug: string; currency:
         </div>
       ) : <p className="mt-6 rounded-full bg-surface-3 px-4 py-3 text-center text-sm font-medium">Agotado</p>}
       {added && (
-        <p role="status" className="mc-pop mt-3 text-sm">Añadido. <Link href={`/tienda/${slug}/carrito`} className="font-medium text-accent-text underline">Ver carrito y pagar</Link></p>
+        <p role="status" className="mc-pop mt-3 text-sm">Añadido. <Link href={`${base}/carrito`} className="font-medium text-accent-text underline">Ver carrito y pagar</Link></p>
       )}
     </div>
   );

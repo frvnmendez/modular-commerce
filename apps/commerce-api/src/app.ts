@@ -7,7 +7,7 @@ import {
   BadRequestError, ConflictError, ForbiddenError, isUuid, NotFoundError, withOperator, withStore, withUser, type StoreRole,
 } from '@mc/db';
 import { commerceRoutes, IMAGE_TYPES } from './commerce.ts';
-import { storefrontRoutes, type OrderMail } from './storefront.ts';
+import { storeBaseUrl, storefrontRoutes, type OrderMail } from './storefront.ts';
 import type { PaymentsConfig } from './payments.ts';
 import {
   BusinessProfileSchema, can, capabilitiesFor, navigationFor, permissionsOf, recommendedModules, type Permission,
@@ -63,12 +63,12 @@ export function buildApp(opts: AppOptions) {
   });
 
   const platformDomain = opts.platformDomain?.toLowerCase();
-  const scheme = new URL(opts.publicUrl ?? opts.allowedOrigins[0] ?? 'http://localhost:3000').protocol;
+  const platformUrl = new URL(opts.publicUrl ?? opts.allowedOrigins[0] ?? 'http://localhost:3000');
   const isStoreOrigin = (origin: string) => {
     if (!platformDomain) return false;
     try {
       const u = new URL(origin);
-      return u.protocol === scheme && u.port === '' && u.origin === origin
+      return u.protocol === platformUrl.protocol && u.port === platformUrl.port && u.origin === origin
         && /^[a-z0-9](?:[a-z0-9-]{1,46}[a-z0-9])$/.test(u.hostname.slice(0, -platformDomain.length - 1))
         && u.hostname.endsWith(`.${platformDomain}`) && u.hostname.split('.').length === platformDomain.split('.').length + 1;
     } catch { return false; }
@@ -221,7 +221,7 @@ export function buildApp(opts: AppOptions) {
     return withStore(user(req).token, storeId, async (c, role) => {
       const s = await c.query('SELECT id, org_id AS "orgId", name, slug, country, currency, status, cell FROM control.stores WHERE id = $1', [storeId]);
       const st = await c.query('SELECT business_profile AS "businessProfile", capabilities FROM commerce.store_settings');
-      return { ...s.rows[0], ...st.rows[0], role, permissions: permissionsOf(role) };
+      return { ...s.rows[0], ...st.rows[0], role, permissions: permissionsOf(role), storeUrl: storeBaseUrl(publicUrl, platformDomain, s.rows[0].slug) };
     });
   });
 

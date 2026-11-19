@@ -148,7 +148,7 @@ export function CheckCircle({ done, size = 20 }: { done: boolean; size?: number 
 }
 
 /** Sección de ajustes: título y descripción a la izquierda, contenido a la derecha. */
-export function SettingsSection({ title, description, children }: { title: string; description: ReactNode; children: ReactNode }) {
+export function SettingsSection({ title, description, children }: { title: ReactNode; description: ReactNode; children: ReactNode }) {
   return (
     <div className="grid gap-3 border-b border-border py-6 first:pt-0 last:border-b-0 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-8">
       <div><h2 className="text-[15px] font-semibold">{title}</h2><p className="mt-1 text-[13px] text-muted">{description}</p></div>

@@ -5,6 +5,7 @@ import { api, humanError } from '@/lib/api';
 import { useStore } from '@/lib/store-context';
 import { region } from '@/lib/labels';
 import { Button, Card, Field, Input, Notice, PageHeader, Select, SettingsSection } from '@/components/ui';
+import { DesignSettings, PaymentsSettings } from './sections';
 
 const CAPS: [string, string, string][] = [
   ['physical-products', 'Productos físicos', 'Artículos que se envían o se recogen.'],
@@ -80,6 +81,8 @@ export default function Settings() {
         </div>
       </form>
       <SalesSettings />
+      <PaymentsSettings />
+      <DesignSettings />
     </div>
   );
 }
@@ -121,7 +124,7 @@ function SalesSettings() {
   }
 
   if (!s) return msg ? <div className="mt-5"><Notice kind="error">{msg.text}</Notice></div> : null;
-  const url = `/tienda/${s.slug}`;
+  const url = store.storeUrl;
   return (
     <form onSubmit={save} className="mt-8 space-y-5" aria-label="Venta online">
       <h2 className="text-lg font-semibold tracking-tight">Venta online</h2>

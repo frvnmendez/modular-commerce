@@ -5,6 +5,8 @@ import type { Me } from './api';
 export type Store = {
   id: string; name: string; slug: string; country: string; currency: string; role: 'owner' | 'admin' | 'staff';
   permissions: string[]; capabilities: string[]; businessProfile: Record<string, unknown>;
+  /** Dirección pública de la tienda (subdominio o /tienda/<slug>). */
+  storeUrl: string;
 };
 export type NavItem = { id: string; label: string; path: string };
 

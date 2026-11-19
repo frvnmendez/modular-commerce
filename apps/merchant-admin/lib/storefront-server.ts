@@ -14,6 +14,10 @@ export async function storefrontGet<T>(path: string): Promise<T | null> {
   return res.json() as Promise<T>;
 }
 
-export type PublicStore = { id: string; name: string; slug: string; country: string; currency: string; shippingFlatAmount: number; freeShippingThreshold: number | null; contactEmail: string | null };
+export type PublicStore = {
+  id: string; name: string; slug: string; country: string; currency: string; shippingFlatAmount: number; freeShippingThreshold: number | null;
+  contactEmail: string | null; accentColor: string | null; logo: string | null; banner: string | null; headline: string | null; tagline: string | null;
+  paymentAccountReady: boolean; acceptsPayments: boolean;
+};
 export type PublicProductCard = { handle: string; title: string; priceFrom: number; image: string | null; available: boolean };
 export type PublicProduct = { handle: string; title: string; description: string; images: string[]; variants: { id: string; title: string; price: number; compareAt: number | null; available: number }[] };

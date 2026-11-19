@@ -91,7 +91,8 @@ test('comprador: ve la tienda, añade al carrito y paga (simulado)', async ({ br
   await buyer.getByLabel('Ciudad').fill('Madrid');
   await shot(buyer, '06-carrito');
   await buyer.getByRole('button', { name: /^Pagar/ }).click();
-  await expect(buyer).toHaveURL(new RegExp(`/tienda/${slug}/pedido/[0-9a-f-]{36}`));
+  // Con dominio de plataforma, la vuelta del pago va al subdominio de la tienda.
+  await expect(buyer).toHaveURL(new RegExp(`^http://${slug}\\.plataforma\\.test:3000/pedido/[0-9a-f-]{36}\\?t=`));
   await buyer.getByRole('button', { name: /\(simulado\)/ }).click();
   await expect(buyer.getByText('Pago confirmado')).toBeVisible();
   await expect(buyer.getByRole('heading', { name: '¡Gracias! Pedido #1' })).toBeVisible();

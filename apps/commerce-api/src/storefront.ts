@@ -57,7 +57,8 @@ type OrderJson = {
 /** Dirección pública de una tienda: su subdominio si hay dominio de plataforma, si no /tienda/<slug>. */
 export function storeBaseUrl(publicUrl: string, platformDomain: string | undefined, slug: string) {
   if (!platformDomain) return `${publicUrl}/tienda/${slug}`;
-  return `${new URL(publicUrl).protocol}//${slug}.${platformDomain}`;
+  const u = new URL(publicUrl);   // mismo esquema y puerto que la plataforma (en producción, https sin puerto)
+  return `${u.protocol}//${slug}.${platformDomain}${u.port ? `:${u.port}` : ''}`;
 }
 
 /** Importes a número (céntimos, < 2^53) y sin datos internos para el navegador. */
@@ -123,7 +124,9 @@ export async function storefrontRoutes(app: FastifyInstance, opts: StorefrontOpt
     const { slug } = z.object({ slug: SLUG }).parse(req.params);
     const s = await withStorefront((c) => c.query('SELECT storefront.get_store($1) AS s', [slug]));
     const r = s.rows[0].s;
-    return { ...r, shippingFlatAmount: Number(r.shippingFlatAmount), freeShippingThreshold: r.freeShippingThreshold === null ? null : Number(r.freeShippingThreshold) };
+    // Sin Stripe Connect todas las tiendas cobran (pago simulado o cuenta de la plataforma).
+    return { ...r, shippingFlatAmount: Number(r.shippingFlatAmount), freeShippingThreshold: r.freeShippingThreshold === null ? null : Number(r.freeShippingThreshold),
+      acceptsPayments: connect ? r.paymentAccountReady === true : true };
   });
 
   app.get('/public/stores/:slug/products', async (req) => {

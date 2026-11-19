@@ -13,6 +13,7 @@ import { createMailer, renderMail } from '../src/mailer.ts';
 const WHSEC = 'whsec_hito2';
 const CONNECT_WHSEC = 'whsec_hito2_connect';
 const DOMAIN = 'plataforma.test';
+const STORE = () => `http://${slug}.${DOMAIN}:3000`;   // mismo puerto que la URL pública de la prueba
 const RUN = Date.now().toString(36);
 const calls: { method: string; path: string; body: URLSearchParams; idem?: string }[] = [];
 const accounts = new Map<string, { charges_enabled: boolean; details_submitted: boolean; payouts_enabled: boolean }>();
@@ -145,8 +146,8 @@ describe('Cobros por tienda (Stripe Connect)', () => {
     expect(s.body.get('payment_intent_data[application_fee_amount]')).toBe(String(platformFee(total, 250)));
     expect(platformFee(total, 250)).toBe(84);   // 3375 × 2,5 % = 84,375 → 84 (nunca de más)
     // Subdominio: la vuelta del pago va a <slug>.<dominio>.
-    expect(s.body.get('success_url')).toMatch(new RegExp(`^http://${slug}\\.${DOMAIN.replace('.', '\\.')}/pedido/${orderId}\\?t=`));
-    expect(s.body.get('cancel_url')).toBe(`http://${slug}.${DOMAIN}/carrito?cancelado=1`);
+    expect(s.body.get('success_url')!.startsWith(`${STORE()}/pedido/${orderId}?t=`)).toBe(true);
+    expect(s.body.get('cancel_url')).toBe(`${STORE()}/carrito?cancelado=1`);
     expect(await adminQuery('SELECT payment_account_id FROM commerce.orders WHERE id = $1', [orderId])).toEqual([{ payment_account_id: accountId }]);
   });
 
@@ -169,7 +170,7 @@ describe('Cobros por tienda (Stripe Connect)', () => {
     const ev = { id: `evt_${RUN}_paid`, type: 'checkout.session.completed', data: { object: { id: session, payment_status: 'paid', amount_total: total, currency: 'eur', payment_intent: `pi_${RUN}`, metadata: { order_id: orderId } } } };
     expect((await signed('/webhooks/stripe', ev, WHSEC)).body).toEqual({ received: true, result: 'paid' });
     // El aviso llega sin el token del comprador: el email lleva a la tienda, en su subdominio.
-    expect(h.orderMail.filter((m) => m.kind === 'order-confirmation').at(-1)).toMatchObject({ to: CUSTOMER.email, url: `http://${slug}.${DOMAIN}`, fromName: `Tienda ${slug}` });
+    expect(h.orderMail.filter((m) => m.kind === 'order-confirmation').at(-1)).toMatchObject({ to: CUSTOMER.email, url: STORE(), fromName: `Tienda ${slug}` });
     calls.length = 0;
     const f = await owner.call('POST', `/v1/stores/${store.storeId}/orders/${orderId}/refund`, {});
     expect(f.body.status).toBe('refunded');
@@ -199,21 +200,22 @@ describe('Cobros por tienda (Stripe Connect)', () => {
       amount_total: r.body.order.total, currency: 'eur', payment_intent: `pi_${RUN}_2`, metadata: { order_id: r.body.orderId } } } }, WHSEC);
     expect((await staff.call('POST', `/v1/stores/${store.storeId}/orders/${r.body.orderId}/fulfill`, {})).status).toBe(200);
     const m = h.orderMail.find((x) => x.kind === 'order-shipped' && x.text?.includes(`#${r.body.order.number}`))!;
-    expect(m).toMatchObject({ to: CUSTOMER.email, fromName: `Tienda ${slug}`, url: `http://${slug}.${DOMAIN}` });
+    expect(m).toMatchObject({ to: CUSTOMER.email, fromName: `Tienda ${slug}`, url: STORE() });
   });
 });
 
 describe('Subdominios', () => {
   it('el escaparate en su subdominio puede comprar; otros orígenes no', async () => {
-    expect((await checkout(`http://${slug}.${DOMAIN}`)).status).toBe(201);
-    expect((await checkout('http://malo.test')).status).toBe(403);
+    expect((await checkout(STORE())).status).toBe(201);
+    expect((await checkout('http://malo.test:3000')).status).toBe(403);
+    expect((await checkout(`http://${slug}.${DOMAIN}`)).status).toBe(403);        // puerto distinto del de la plataforma
     expect((await checkout(`http://${slug}.${DOMAIN}:8080`)).status).toBe(403);
-    expect((await checkout(`http://a.b.${DOMAIN}`)).status).toBe(403);
-    expect((await checkout(`https://${slug}.${DOMAIN}`)).status).toBe(403);   // esquema distinto del de la plataforma
+    expect((await checkout(`http://a.b.${DOMAIN}:3000`)).status).toBe(403);
+    expect((await checkout(`https://${slug}.${DOMAIN}:3000`)).status).toBe(403);  // esquema distinto
   });
 
   it('un subdominio de tienda no sirve para las rutas del panel', async () => {
-    const r = await owner.call('PATCH', `/v1/stores/${store.storeId}/sales-settings`, { shippingFlatAmount: 1 }, { origin: `http://${slug}.${DOMAIN}` });
+    const r = await owner.call('PATCH', `/v1/stores/${store.storeId}/sales-settings`, { shippingFlatAmount: 1 }, { origin: STORE() });
     expect(r.status).toBe(403);
   });
 

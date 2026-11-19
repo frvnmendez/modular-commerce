@@ -22,6 +22,11 @@ const DETAILS: Record<string, string> = {
   ORDER_NOT_REFUNDABLE: 'Este pedido no se puede reembolsar en su estado actual.',
   REFUND_UNAVAILABLE: 'No se pudo reembolsar automáticamente. Hazlo desde tu panel de Stripe.',
   ONLY_UNPAID_ORDERS_CAN_BE_CANCELLED: 'Solo se pueden cancelar pedidos sin pagar. Para uno pagado, reembólsalo.',
+  PAYMENTS_NOT_READY: 'Esta tienda todavía no puede cobrar. Vuelve a intentarlo más tarde.',
+  SLUG_RESERVED: 'Esa dirección está reservada por la plataforma. Elige otra.',
+  CONNECT_DISABLED: 'Los cobros con cuenta propia no están activados en esta plataforma.',
+  ACCOUNT_NOT_READY: 'Termina primero el alta en Stripe.',
+  REQUIRES_OWNER_OR_ADMIN: 'Solo un propietario o administrador puede hacer esto.',
 };
 
 const MESSAGES: Record<string, string> = {

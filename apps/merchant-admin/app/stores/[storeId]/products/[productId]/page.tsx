@@ -104,7 +104,7 @@ export default function ProductEditor({ params }: { params: Promise<{ productId:
 
   if (!loaded) return msg ? <Notice kind="error">{msg.text}</Notice> : <PageSkeleton label="Cargando producto…" />;
   const created = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('creado');
-  const storeUrl = `/tienda/${store.slug}/producto/${handle}`;
+  const storeUrl = `${store.storeUrl}/producto/${handle}`;
 
   return (
     <form onSubmit={save} className="mc-rise" noValidate>
@@ -176,7 +176,7 @@ export default function ProductEditor({ params }: { params: Promise<{ productId:
               </Select>
             </Card>
             <Card title="Dirección web" description="Se crea sola a partir del nombre.">
-              <Field label="Identificador" error={errors.handle} hint={handle ? `/tienda/${store.slug}/producto/${handle}` : undefined}>
+              <Field label="Identificador" error={errors.handle} hint={handle ? `${store.storeUrl.replace(/^https?:\/\//, "")}/producto/${handle}` : undefined}>
                 <Input value={handle} onChange={(e) => setHandle(e.target.value.toLowerCase())} placeholder="se genera al guardar" maxLength={100} />
               </Field>
             </Card>

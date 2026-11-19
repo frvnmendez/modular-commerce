@@ -4,16 +4,19 @@ import Link from 'next/link';
 import { api, humanError } from '@/lib/api';
 import { readCart, writeCart, MAX_PER_ITEM, type CartItem } from '@/lib/cart';
 import { formatMoney } from '@/lib/money';
+import { useStoreBase } from '@/lib/store-base';
+import { splitSlug } from '@/lib/slug';
 
-type Store = { name: string; currency: string; country: string; shippingFlatAmount: number; freeShippingThreshold: number | null };
+type Store = { name: string; currency: string; country: string; shippingFlatAmount: number; freeShippingThreshold: number | null; acceptsPayments: boolean };
 const input = 'h-11 w-full rounded-[10px] border border-border-strong bg-surface px-3 text-sm outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)]';
 
 export default function Cart({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params);
+  const { slug } = splitSlug(use(params).slug);
   const [items, setItems] = useState<CartItem[] | null>(null);
   const [store, setStore] = useState<Store | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const base = useStoreBase();
   const [cancelled, setCancelled] = useState(false);
 
   useEffect(() => {
@@ -48,7 +51,7 @@ export default function Cart({ params }: { params: Promise<{ slug: string }> }) 
     return (
       <div className="mx-auto max-w-md py-16 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">Tu carrito está vacío</h1>
-        <Link href={`/tienda/${slug}`} className="mt-6 inline-flex h-11 items-center rounded-full bg-accent px-6 text-sm font-semibold text-accent-fg">Ver productos</Link>
+        <Link href={base || '/'} className="mt-6 inline-flex h-11 items-center rounded-full bg-accent px-6 text-sm font-semibold text-accent-fg">Ver productos</Link>
       </div>
     );
   }
@@ -65,7 +68,7 @@ export default function Cart({ params }: { params: Promise<{ slug: string }> }) 
                 ? <img src={`/media/${i.image}`} alt="" className="size-20 shrink-0 rounded-[10px] object-cover" />
                 : <span className="size-20 shrink-0 rounded-[10px] bg-surface-3" />}
               <div className="min-w-0 flex-1">
-                <Link href={`/tienda/${slug}/producto/${i.handle}`} className="font-medium hover:underline">{i.productTitle}</Link>
+                <Link href={`${base}/producto/${i.handle}`} className="font-medium hover:underline">{i.productTitle}</Link>
                 <p className="text-sm text-muted">{i.variantTitle}</p>
                 <div className="mt-2 flex items-center gap-3">
                   <label className="sr-only" htmlFor={`q-${i.variantId}`}>Cantidad de {i.productTitle}</label>
@@ -103,7 +106,8 @@ export default function Cart({ params }: { params: Promise<{ slug: string }> }) 
           <input className={input} name="phone" type="tel" autoComplete="tel" placeholder="Teléfono (opcional)" aria-label="Teléfono" maxLength={40} />
           <p className="text-xs text-muted">Enviamos solo a {new Intl.DisplayNames(['es'], { type: 'region' }).of(store.country) ?? store.country}.</p>
           {error && <p role="alert" className="rounded-[10px] bg-danger-soft px-3 py-2 text-sm">{error}</p>}
-          <button type="submit" disabled={busy} className="h-12 w-full rounded-full bg-accent text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60">
+          {!store.acceptsPayments && <p role="alert" className="rounded-[10px] bg-warning-soft px-3 py-2 text-sm">Esta tienda todavía no acepta pedidos.</p>}
+          <button type="submit" disabled={busy || !store.acceptsPayments} className="h-12 w-full rounded-full bg-accent text-sm font-semibold text-accent-fg hover:bg-accent-hover disabled:opacity-60">
             {busy ? 'Preparando el pago…' : `Pagar ${money(subtotal + shipping)}`}
           </button>
           <p className="text-center text-xs text-muted">Pagarás en una página segura de pago. El importe final se confirma allí.</p>

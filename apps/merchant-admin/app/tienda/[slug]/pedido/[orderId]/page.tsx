@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { api, humanError } from '@/lib/api';
 import { writeCart } from '@/lib/cart';
 import { formatMoney } from '@/lib/money';
+import { useStoreBase } from '@/lib/store-base';
+import { splitSlug } from '@/lib/slug';
 
 type Order = {
   orderId: string; number: number; status: 'pending' | 'paid' | 'fulfilled' | 'cancelled' | 'refunded'; currency: string; email: string; storeName: string;
@@ -13,11 +15,13 @@ type Order = {
 };
 
 export default function OrderThanks({ params }: { params: Promise<{ slug: string; orderId: string }> }) {
-  const { slug, orderId } = use(params);
+  const { slug: raw, orderId } = use(params);
+  const { slug } = splitSlug(raw);
   const [token, setToken] = useState<string | null>(null);
   const [o, setO] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
+  const base = useStoreBase();
   const [tries, setTries] = useState(0);
 
   const load = useCallback((t: string) => api<Order>(`/public/stores/${slug}/orders/${orderId}?t=${encodeURIComponent(t)}`).then(setO).catch((e) => setError(humanError(e))), [slug, orderId]);
@@ -84,7 +88,7 @@ export default function OrderThanks({ params }: { params: Promise<{ slug: string
       </dl>
       <p className="mt-6 text-sm text-muted">Envío a: {o.shipAddress.line1}{o.shipAddress.line2 ? `, ${o.shipAddress.line2}` : ''}, {o.shipAddress.postalCode} {o.shipAddress.city}</p>
       {o.contactEmail && <p className="mt-2 text-sm text-muted">¿Dudas? Escribe a <a className="underline" href={`mailto:${o.contactEmail}`}>{o.contactEmail}</a>.</p>}
-      <Link href={`/tienda/${slug}`} className="mt-8 inline-flex h-11 items-center rounded-full border border-border-strong px-6 text-sm font-medium hover:bg-surface-2">Seguir comprando</Link>
+      <Link href={base || '/'} className="mt-8 inline-flex h-11 items-center rounded-full border border-border-strong px-6 text-sm font-medium hover:bg-surface-2">Seguir comprando</Link>
     </div>
   );
 }

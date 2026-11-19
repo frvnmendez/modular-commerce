@@ -1,17 +1,20 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { splitSlug } from '@/lib/slug';
 import { notFound } from 'next/navigation';
 import { storefrontGet, type PublicProduct, type PublicStore } from '@/lib/storefront-server';
 import { AddToCart } from './add-to-cart';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string; handle: string }> }): Promise<Metadata> {
-  const { slug, handle } = await params;
+  const { slug: raw, handle } = await params;
+  const { slug } = splitSlug(raw);
   const p = await storefrontGet<PublicProduct>(`/public/stores/${encodeURIComponent(slug)}/products/${encodeURIComponent(handle)}`);
   return { title: p?.title ?? 'Producto', description: p?.description.slice(0, 160) || undefined };
 }
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string; handle: string }> }) {
-  const { slug, handle } = await params;
+  const { slug: raw, handle } = await params;
+  const { slug, base } = splitSlug(raw);
   const [store, p] = await Promise.all([
     storefrontGet<PublicStore>(`/public/stores/${encodeURIComponent(slug)}`),
     storefrontGet<PublicProduct>(`/public/stores/${encodeURIComponent(slug)}/products/${encodeURIComponent(handle)}`),
@@ -19,7 +22,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   if (!store || !p) notFound();
   return (
     <div>
-      <Link href={`/tienda/${store.slug}`} className="text-sm text-muted hover:underline">← Todos los productos</Link>
+      <Link href={base || '/'} className="text-sm text-muted hover:underline">← Todos los productos</Link>
       <div className="mt-4 grid gap-8 md:grid-cols-2">
         <div className="space-y-3">
           {p.images.length === 0 && <div className="grid aspect-[4/5] place-items-center rounded-card bg-surface-3 text-subtle">Sin foto</div>}

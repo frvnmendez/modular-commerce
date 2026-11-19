@@ -13,7 +13,8 @@ export default function StoreHome() {
   const { store, me } = useStore();
   const can = (p: string) => store.permissions.includes(p);
   const firstName = me.user.name.split(/\s+/)[0] || me.user.name;
-  const url = `/tienda/${store.slug}`;
+  const url = store.storeUrl;
+  const shownUrl = url.replace(/^https?:\/\//, "");
   const base = `/stores/${store.id}`;
   const [state, setState] = useState<{ products: number; active: number; published: boolean; orders: number } | null>(null);
   useEffect(() => {
@@ -27,7 +28,7 @@ export default function StoreHome() {
     }));
   }, [store.id]);
   const steps: Step[] = [
-    { id: 'create', done: true, title: 'Crear la tienda', body: `${store.name} ya existe y tendrá su dirección: ${url}.`, icon: <IconStore /> },
+    { id: 'create', done: true, title: 'Crear la tienda', body: `${store.name} ya existe y tendrá su dirección: ${shownUrl}.`, icon: <IconStore /> },
     { id: 'product', done: (state?.active ?? 0) > 0, title: 'Añadir tu primer producto', body: 'Sube fotos, define tallas y colores y fija el precio. Márcalo como «Activo» para que se vea en la tienda.', icon: <IconTag />,
       action: { label: 'Añadir producto', href: `${base}/products/new` } },
     { id: 'publish', done: !!state?.published, title: 'Publicar la tienda', body: 'Pon la tarifa de envío y el IVA y abre la tienda al público.', icon: <IconGlobe />,
@@ -83,7 +84,7 @@ export default function StoreHome() {
               <span className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-ink text-[15px] font-semibold text-ink-text">{store.name.slice(0, 1).toUpperCase()}</span>
               <div className="min-w-0">
                 <p className="truncate text-[15px] font-semibold">{store.name}</p>
-                <p className="truncate text-xs text-muted">{url}</p>
+                <p className="truncate text-xs text-muted">{shownUrl}</p>
               </div>
             </div>
             <div className="mt-3 flex items-center justify-between gap-2">
