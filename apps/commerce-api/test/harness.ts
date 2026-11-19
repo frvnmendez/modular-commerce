@@ -1,14 +1,23 @@
 import { closeAuthPools, createAuth, type MailMessage } from '@mc/auth';
 import { closePools } from '@mc/db';
-import { buildApp } from '../src/app.ts';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { buildApp, type AppOptions } from '../src/app.ts';
+import type { OrderMail } from '../src/storefront.ts';
 
 process.env.AUTH_RATE_LIMIT ??= 'off';
 
-export function makeApp() {
+export function makeApp(extra: Partial<Pick<AppOptions, 'payments' | 'uploadDir' | 'checkoutRateLimit' | 'platformDomain'>> = {}) {
   const outbox: MailMessage[] = [];
+  const orderMail: OrderMail[] = [];
   const auth = createAuth({ mailer: async (m) => { outbox.push(m); }, baseURL: 'http://localhost:4000', secret: 'test-secret-'.padEnd(40, 'x'), trustedOrigins: ['http://localhost:3000'] });
-  const app = buildApp({ auth, allowedOrigins: ['http://localhost:3000'], logger: false });
-  return { app, outbox };
+  const app = buildApp({
+    auth, allowedOrigins: ['http://localhost:3000'], logger: process.env.TEST_LOG === '1' ? undefined : false, publicUrl: 'http://localhost:3000',
+    uploadDir: extra.uploadDir ?? mkdtempSync(join(tmpdir(), 'mc-uploads-')), payments: extra.payments ?? { provider: 'fake' },
+    sendMail: async (m) => { orderMail.push(m); }, checkoutRateLimit: extra.checkoutRateLimit ?? 1000, platformDomain: extra.platformDomain,
+  });
+  return { app, outbox, orderMail };
 }
 
 /** Cierra la app y todos los pools (BD de la app y de auth). */
@@ -23,7 +32,7 @@ export type Client = { cookie: string; email: string; id: string; token: string;
 
 let seq = 0;
 /** Registra, verifica email e inicia sesión un usuario nuevo. */
-export async function signUp(h: ReturnType<typeof makeApp>, name: string): Promise<Client> {
+export async function signUp(h: { app: App; outbox: MailMessage[] }, name: string): Promise<Client> {
   const email = `${name.toLowerCase()}-${Date.now()}-${seq++}@test.local`;
   const r = await h.app.inject({ method: 'POST', url: '/api/auth/sign-up/email', payload: { email, password: 'contraseña-segura-1', name } });
   if (r.statusCode !== 200) throw new Error(`sign-up ${r.statusCode} ${r.body}`);

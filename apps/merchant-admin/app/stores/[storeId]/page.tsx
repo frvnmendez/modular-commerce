@@ -1,26 +1,43 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { api } from '@/lib/api';
 import Link from 'next/link';
 import { ROLE_LABEL, useStore } from '@/lib/store-context';
 import { CAP_LABEL, region } from '@/lib/labels';
-import { Badge, Button, ButtonLink, Card, CheckCircle, PageHeader, ProgressBar, SoonBadge } from '@/components/ui';
+import { Badge, ButtonLink, Card, CheckCircle, PageHeader, ProgressBar } from '@/components/ui';
 import { IconCard, IconChevronDown, IconGlobe, IconStore, IconTag, IconUsers } from '@/components/icons';
 
-type Step = { id: string; done: boolean; title: string; body: string; icon: React.ReactNode; action?: string };
+type Step = { id: string; done: boolean; title: string; body: string; icon: React.ReactNode; action?: { label: string; href: string } };
 
 export default function StoreHome() {
   const { store, me } = useStore();
   const can = (p: string) => store.permissions.includes(p);
   const firstName = me.user.name.split(/\s+/)[0] || me.user.name;
-  const url = `${store.slug}.plataforma.com`;
+  const url = store.storeUrl;
+  const shownUrl = url.replace(/^https?:\/\//, "");
+  const base = `/stores/${store.id}`;
+  const [state, setState] = useState<{ products: number; active: number; published: boolean; orders: number } | null>(null);
+  useEffect(() => {
+    Promise.all([
+      api<{ items: { status: string }[] }>(`/v1/stores/${store.id}/products`).catch(() => ({ items: [] })),
+      can('settings:write') ? api<{ storefrontPublished: boolean }>(`/v1/stores/${store.id}/sales-settings`).catch(() => ({ storefrontPublished: false })) : Promise.resolve({ storefrontPublished: false }),
+      api<{ counts: Record<string, number> }>(`/v1/stores/${store.id}/orders`).catch(() => ({ counts: {} })),
+    ]).then(([p, s, o]) => setState({
+      products: p.items.length, active: p.items.filter((x) => x.status === 'active').length, published: s.storefrontPublished,
+      orders: Object.entries(o.counts).filter(([k]) => k !== 'pending' && k !== 'cancelled').reduce((a, [, n]) => a + n, 0),
+    }));
+  }, [store.id]);
   const steps: Step[] = [
-    { id: 'create', done: true, title: 'Crear la tienda', body: `${store.name} ya existe y tiene dirección propia: ${url}.`, icon: <IconStore /> },
-    { id: 'product', done: false, title: 'Añadir tu primer producto', body: 'Sube fotos, define tallas y colores y fija el precio. Es lo primero que verán tus clientes.', icon: <IconTag />, action: 'Añadir producto' },
-    { id: 'payments', done: false, title: 'Configurar pagos', body: 'Acepta tarjeta y otros métodos de pago. El dinero llega directamente a tu cuenta.', icon: <IconCard />, action: 'Configurar pagos' },
-    { id: 'publish', done: false, title: 'Publicar la tienda', body: `Revisa cómo se ve y abre la tienda al público en ${url}.`, icon: <IconGlobe />, action: 'Publicar tienda' },
+    { id: 'create', done: true, title: 'Crear la tienda', body: `${store.name} ya existe y tendrá su dirección: ${shownUrl}.`, icon: <IconStore /> },
+    { id: 'product', done: (state?.active ?? 0) > 0, title: 'Añadir tu primer producto', body: 'Sube fotos, define tallas y colores y fija el precio. Márcalo como «Activo» para que se vea en la tienda.', icon: <IconTag />,
+      action: { label: 'Añadir producto', href: `${base}/products/new` } },
+    { id: 'publish', done: !!state?.published, title: 'Publicar la tienda', body: 'Pon la tarifa de envío y el IVA y abre la tienda al público.', icon: <IconGlobe />,
+      action: { label: 'Ir a venta online', href: `${base}/settings` } },
+    { id: 'payments', done: (state?.orders ?? 0) > 0, title: 'Hacer una compra de prueba', body: 'Entra en tu tienda, añade algo al carrito y paga con una tarjeta de prueba. Sin dinero real.', icon: <IconCard />,
+      action: { label: 'Abrir mi tienda', href: url } },
   ];
   const doneCount = steps.filter((s) => s.done).length;
-  const [expanded, setExpanded] = useState<string | null>(steps.find((s) => !s.done)?.id ?? null);
+  const [expanded, setExpanded] = useState<string | null>('product');
 
   return (
     <div className="mc-rise">
@@ -46,10 +63,9 @@ export default function StoreHome() {
                     <div className="mc-pop flex gap-4 px-3 pb-4 pl-11">
                       <div className="min-w-0 flex-1">
                         <p className="text-[13px] text-muted">{s.body}</p>
-                        {s.action && (
+                        {s.action && !s.done && (
                           <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <Button size="sm" disabled title="Disponible en la próxima versión">{s.action}</Button>
-                            <SoonBadge />
+                            <ButtonLink href={s.action.href} variant="primary" size="sm">{s.action.label}</ButtonLink>
                           </div>
                         )}
                       </div>
@@ -68,10 +84,13 @@ export default function StoreHome() {
               <span className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-ink text-[15px] font-semibold text-ink-text">{store.name.slice(0, 1).toUpperCase()}</span>
               <div className="min-w-0">
                 <p className="truncate text-[15px] font-semibold">{store.name}</p>
-                <p className="truncate text-xs text-muted">{url}</p>
+                <p className="truncate text-xs text-muted">{shownUrl}</p>
               </div>
             </div>
-            <div className="mt-3"><Badge tone="warning" dot>Sin publicar</Badge></div>
+            <div className="mt-3 flex items-center justify-between gap-2">
+              {state?.published ? <Badge tone="success" dot>Publicada</Badge> : <Badge tone="warning" dot>Sin publicar</Badge>}
+              <a href={url} target="_blank" rel="noreferrer" className="text-[13px] font-medium text-accent-text hover:underline">Ver tienda</a>
+            </div>
             <dl className="mt-4 space-y-2 border-t border-border pt-3 text-[13px]">
               <div className="flex justify-between gap-3"><dt className="text-muted">País</dt><dd>{region(store.country)}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Moneda</dt><dd>{store.currency}</dd></div>

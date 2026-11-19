@@ -1,5 +1,5 @@
 /** Configuración de conexión por rol. Cada proceso usa el rol mínimo que necesita. */
-export type DbRole = 'migrator' | 'app' | 'auth' | 'ops';
+export type DbRole = 'migrator' | 'app' | 'auth' | 'ops' | 'storefront' | 'payments';
 
 const required = (name: string): string => {
   const v = process.env[name];
@@ -12,6 +12,8 @@ export const ROLE_USERS: Record<DbRole, string> = {
   app: 'mc_app',
   auth: 'mc_auth',
   ops: 'mc_ops',
+  storefront: 'mc_storefront',
+  payments: 'mc_payments',
 };
 
 const PASSWORD_VARS: Record<DbRole, string> = {
@@ -19,6 +21,8 @@ const PASSWORD_VARS: Record<DbRole, string> = {
   app: 'DATABASE_APP_PASSWORD',
   auth: 'DATABASE_AUTH_PASSWORD',
   ops: 'DATABASE_OPS_PASSWORD',
+  storefront: 'DATABASE_STOREFRONT_PASSWORD',
+  payments: 'DATABASE_PAYMENTS_PASSWORD',
 };
 
 export function connectionFor(role: DbRole) {

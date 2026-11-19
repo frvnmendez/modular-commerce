@@ -23,6 +23,10 @@ const ROLE_FLAGS: Record<DbRole, string> = {
   auth: 'LOGIN NOSUPERUSER NOCREATEROLE NOBYPASSRLS',
   // Operación de plataforma: lectura de vistas concretas del plano de control.
   ops: 'LOGIN NOSUPERUSER NOCREATEROLE NOBYPASSRLS',
+  // Escaparate público (compradores sin sesión): solo ejecuta funciones storefront.* (migración 0011).
+  storefront: 'LOGIN NOSUPERUSER NOCREATEROLE NOBYPASSRLS',
+  // Avisos de pago verificados: solo ejecuta funciones payments.* (migración 0011).
+  payments: 'LOGIN NOSUPERUSER NOCREATEROLE NOBYPASSRLS',
 };
 
 export async function bootstrap() {
@@ -38,7 +42,7 @@ export async function bootstrap() {
     const db = await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
     if (!db.rowCount) await admin.query(`CREATE DATABASE ${ident(dbName)} OWNER ${ident(ROLE_USERS.migrator)}`);
     await admin.query(`REVOKE ALL ON DATABASE ${ident(dbName)} FROM PUBLIC`);
-    for (const r of ['app', 'auth', 'ops'] as DbRole[]) {
+    for (const r of ['app', 'auth', 'ops', 'storefront', 'payments'] as DbRole[]) {
       await admin.query(`GRANT CONNECT ON DATABASE ${ident(dbName)} TO ${ident(ROLE_USERS[r])}`);
     }
   } finally {

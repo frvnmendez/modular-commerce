@@ -33,10 +33,13 @@ export class ForbiddenError extends Error {
 export class ConflictError extends Error {
   constructor(what = 'CONFLICT') { super(what); this.name = 'ConflictError'; }
 }
+export class BadRequestError extends Error {
+  constructor(what = 'BAD_REQUEST') { super(what); this.name = 'BadRequestError'; }
+}
 
 /** Traduce errores de las funciones SQL a errores de dominio. */
 export function mapDbError(e: unknown): never {
-  const err = e as { code?: string; message?: string };
+  const err = e as { code?: string; message?: string; constraint?: string };
   const msg = err.message ?? '';
   // Solo se traducen los errores de dominio que lanzan nuestras funciones (mensajes en MAYÚSCULAS).
   // Un "permission denied" real de Postgres es un bug de privilegios y debe aflorar como 500.
@@ -45,6 +48,9 @@ export function mapDbError(e: unknown): never {
   if (err.code === '42501' && domain) throw new ForbiddenError(msg);
   if (err.code === '23505') throw new ConflictError('DUPLICATE');
   if (err.code === '23514' && domain) throw new ConflictError(msg);
+  if (err.code === '23514' && err.constraint === 'stores_slug_not_reserved') throw new ConflictError('SLUG_RESERVED');
+  if (err.code === '22023' && domain) throw new BadRequestError(msg);
+  if (err.code === '22P02') throw new BadRequestError('INVALID_INPUT');   // p. ej. un uuid mal formado dentro de un JSON
   throw e;
 }
 
@@ -98,6 +104,19 @@ export function withStore<T>(sessionToken: string, storeId: string, fn: (c: Tx, 
 /** Operaciones de plataforma (rol mc_ops). Siempre auditadas por quien llama. */
 export function withOperator<T>(sessionToken: string, fn: (c: Tx) => Promise<T>): Promise<T> {
   return transaction('ops', (c) => beginSession(c, sessionToken), fn).catch(mapDbError);
+}
+
+/**
+ * Escaparate público (comprador sin sesión). El rol mc_storefront no tiene acceso a ninguna tabla: solo puede
+ * llamar a las funciones storefront.*, que reciben la tienda de forma explícita.
+ */
+export function withStorefront<T>(fn: (c: Tx) => Promise<T>): Promise<T> {
+  return transaction('storefront', async () => {}, fn).catch(mapDbError);
+}
+
+/** Avisos de pago ya verificados (firma del proveedor). El rol mc_payments solo ejecuta payments.*. */
+export function withPayments<T>(fn: (c: Tx) => Promise<T>): Promise<T> {
+  return transaction('payments', async () => {}, fn).catch(mapDbError);
 }
 
 export const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);

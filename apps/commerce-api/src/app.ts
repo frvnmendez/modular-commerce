@@ -4,8 +4,11 @@ import { createHash, randomBytes } from 'node:crypto';
 import { uuidv7 } from 'uuidv7';
 import type { Auth } from '@mc/auth';
 import {
-  ConflictError, ForbiddenError, isUuid, NotFoundError, withOperator, withStore, withUser, type StoreRole,
+  BadRequestError, ConflictError, ForbiddenError, isUuid, NotFoundError, withOperator, withStore, withUser, type StoreRole,
 } from '@mc/db';
+import { commerceRoutes, IMAGE_TYPES } from './commerce.ts';
+import { storeBaseUrl, storefrontRoutes, type OrderMail } from './storefront.ts';
+import type { PaymentsConfig } from './payments.ts';
 import {
   BusinessProfileSchema, can, capabilitiesFor, navigationFor, permissionsOf, recommendedModules, type Permission,
 } from '@mc/core';
@@ -14,7 +17,19 @@ import {
  * trustProxy: solo si hay un proxy conocido delante (p. ej. el balanceador). Determina req.ip, que es la IP
  * que ve el limitador de intentos de Better Auth (RT-R1 H2). Por defecto, la IP del socket.
  */
-export type AppOptions = { auth: Auth; allowedOrigins: string[]; logger?: boolean; trustProxy?: boolean | string | string[] };
+export type AppOptions = {
+  auth: Auth; allowedOrigins: string[]; logger?: boolean; trustProxy?: boolean | string | string[];
+  /** Carpeta de las imágenes de producto. */
+  uploadDir?: string;
+  /** Proveedor de pagos. Por defecto «fake» (simulado), que server.ts prohíbe en producción. */
+  payments?: PaymentsConfig;
+  /** URL pública del panel y del escaparate, para los enlaces de vuelta del pago y de los emails. */
+  publicUrl?: string;
+  /** Dominio de la plataforma: las tiendas viven en <slug>.<dominio> (Hito 2). */
+  platformDomain?: string;
+  sendMail?: (m: OrderMail) => Promise<void>;
+  checkoutRateLimit?: number;
+};
 type SessionUser = { id: string; email: string; name: string; emailVerified: boolean; token: string };
 
 declare module 'fastify' {
@@ -29,6 +44,9 @@ const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
  * el router decodifica la URL (`/%761/me` llega a `/v1/me`) y req.url no (revisión final del PR #1, hallazgo 1).
  */
 const isV1Route = (req: FastifyRequest) => req.routeOptions.url?.startsWith('/v1/') ?? false;
+const isPublicRoute = (req: FastifyRequest) => req.routeOptions.url?.startsWith('/public/') ?? false;
+const IMAGE_UPLOAD_ROUTES = new Set(['/v1/stores/:storeId/products/:productId/images', '/v1/stores/:storeId/design/:slot']);
+const isImageUpload = (req: FastifyRequest) => req.method === 'POST' && IMAGE_UPLOAD_ROUTES.has(req.routeOptions.url ?? '');
 
 function requirePermission(role: StoreRole, p: Permission) {
   if (!can(role, p)) throw new ForbiddenError(`MISSING_PERMISSION:${p}`);
@@ -44,20 +62,40 @@ export function buildApp(opts: AppOptions) {
     trustProxy: opts.trustProxy ?? false,
   });
 
+  const platformDomain = opts.platformDomain?.toLowerCase();
+  const platformUrl = new URL(opts.publicUrl ?? opts.allowedOrigins[0] ?? 'http://localhost:3000');
+  const isStoreOrigin = (origin: string) => {
+    if (!platformDomain) return false;
+    try {
+      const u = new URL(origin);
+      return u.protocol === platformUrl.protocol && u.port === platformUrl.port && u.origin === origin
+        && /^[a-z0-9](?:[a-z0-9-]{1,46}[a-z0-9])$/.test(u.hostname.slice(0, -platformDomain.length - 1))
+        && u.hostname.endsWith(`.${platformDomain}`) && u.hostname.split('.').length === platformDomain.split('.').length + 1;
+    } catch { return false; }
+  };
+
   // Cabeceras de seguridad básicas para una API JSON.
   app.addHook('onSend', async (_req, reply) => {
     reply.header('x-content-type-options', 'nosniff');
     reply.header('referrer-policy', 'no-referrer');
-    reply.header('cache-control', 'no-store');
+    if (!reply.hasHeader('cache-control')) reply.header('cache-control', 'no-store');
   });
 
   // CSRF: las mutaciones solo con JSON y, si hay Origin, debe ser uno permitido.
   app.addHook('onRequest', async (req, reply) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return;
     const origin = req.headers.origin;
-    if (origin && !opts.allowedOrigins.includes(origin)) return reply.code(403).send({ error: 'ORIGIN_NOT_ALLOWED' });
-    if (isV1Route(req) && req.headers['content-type']?.split(';')[0] !== 'application/json'
-        && req.method !== 'DELETE') {
+    // El escaparate de una tienda en su subdominio (https://<slug>.<dominio>) solo puede llamar a /public.
+    const storeOrigin = !!origin && isPublicRoute(req) && isStoreOrigin(origin);
+    if (origin && !storeOrigin && !opts.allowedOrigins.includes(origin)) return reply.code(403).send({ error: 'ORIGIN_NOT_ALLOWED' });
+    const type = req.headers['content-type']?.split(';')[0]?.trim().toLowerCase();
+    // Subida de imágenes: el cuerpo es el fichero. Como no es JSON, se exige además un Origin permitido.
+    if (isImageUpload(req)) {
+      if (!origin) return reply.code(403).send({ error: 'ORIGIN_REQUIRED' });
+      if (!type || !IMAGE_TYPES[type]) return reply.code(415).send({ error: 'IMAGE_TYPE_REQUIRED' });
+      return;
+    }
+    if ((isV1Route(req) || isPublicRoute(req)) && type !== 'application/json' && req.method !== 'DELETE') {
       return reply.code(415).send({ error: 'JSON_REQUIRED' });
     }
   });
@@ -104,8 +142,12 @@ export function buildApp(opts: AppOptions) {
     if (err instanceof NotFoundError) return reply.code(404).send({ error: 'NOT_FOUND' });
     if (err instanceof ForbiddenError) return reply.code(403).send({ error: 'FORBIDDEN', detail: err.message });
     if (err instanceof ConflictError) return reply.code(409).send({ error: 'CONFLICT', detail: err.message });
+    if (err instanceof BadRequestError) return reply.code(400).send({ error: 'BAD_REQUEST', detail: err.message });
     const status = (err as { statusCode?: number }).statusCode;
     if (status === 401) return reply.code(401).send({ error: 'UNAUTHENTICATED' });
+    if (status === 429) return reply.code(429).send({ error: 'RATE_LIMITED' });
+    if (status === 502) return reply.code(502).send({ error: (err as Error).message || 'BAD_GATEWAY' });
+    if (status === 413) return reply.code(413).send({ error: 'TOO_LARGE' });
     if (status && status < 500) return reply.code(status).send({ error: 'BAD_REQUEST' });
     req.log.error({ err }, 'error no controlado');
     return reply.code(500).send({ error: 'INTERNAL' });
@@ -119,6 +161,20 @@ export function buildApp(opts: AppOptions) {
   const storeIdParam = z.object({ storeId: z.string() });
 
   app.get('/health', async () => ({ ok: true }));
+
+  // Imágenes de producto: el cuerpo llega como Buffer (solo en la ruta de subida, que limita el tamaño).
+  app.addContentTypeParser(Object.keys(IMAGE_TYPES), { parseAs: 'buffer', bodyLimit: 5 * 1024 * 1024 }, (_req, body, done) => done(null, body));
+
+  // --- Núcleo de venta (Hito 1) --------------------------------------------------------------
+  const uploadDir = opts.uploadDir ?? './uploads';
+  const payments: PaymentsConfig = opts.payments ?? { provider: 'fake' };
+  const publicUrl = opts.publicUrl ?? opts.allowedOrigins[0] ?? 'http://localhost:3000';
+  app.register(async (inst) => commerceRoutes(inst, { uploadDir, payments, publicUrl, platformDomain, sendMail: opts.sendMail,
+    tokenOf: (req) => user(req).token }));
+  app.register(async (inst) => storefrontRoutes(inst, {
+    uploadDir, payments, publicUrl, platformDomain, sendMail: opts.sendMail,
+    checkoutRateLimit: opts.checkoutRateLimit,
+  }));
 
   // --- Usuario y organizaciones ---------------------------------------------------------------
   app.get('/v1/me', async (req) => {
@@ -165,7 +221,7 @@ export function buildApp(opts: AppOptions) {
     return withStore(user(req).token, storeId, async (c, role) => {
       const s = await c.query('SELECT id, org_id AS "orgId", name, slug, country, currency, status, cell FROM control.stores WHERE id = $1', [storeId]);
       const st = await c.query('SELECT business_profile AS "businessProfile", capabilities FROM commerce.store_settings');
-      return { ...s.rows[0], ...st.rows[0], role, permissions: permissionsOf(role) };
+      return { ...s.rows[0], ...st.rows[0], role, permissions: permissionsOf(role), storeUrl: storeBaseUrl(publicUrl, platformDomain, s.rows[0].slug) };
     });
   });
 

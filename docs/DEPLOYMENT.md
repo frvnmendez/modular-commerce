@@ -1,12 +1,13 @@
 # DEPLOYMENT
 
-En R1 no hay ningún despliegue. Este documento describe cómo se ejecuta lo que existe y la configuración que un despliegue tendría que respetar.
+Todavía no hay ningún despliegue. Este documento describe cómo se ejecuta lo que existe y la configuración que un despliegue tendría que respetar. Los pasos para montarlo en un servidor propio están en `DEPLOYMENT-VPS.md`.
 
 ## Procesos
 
 | Proceso | Comando | Escucha | Notas |
 |---|---|---|---|
 | API | `node apps/commerce-api/src/server.ts` | `HOST:PORT` (por defecto `127.0.0.1:4000`) | No debe exponerse a Internet: solo la consume el panel |
+| Webhook de Stripe | Lo sirve la API en `/webhooks/stripe` | — | El proxy de borde (Caddy) lo envía directo a la API; el panel no lo reenvía |
 | Panel | `pnpm --filter @mc/merchant-admin build` y después `pnpm --filter @mc/merchant-admin start` (= `node server.mjs`). `next start` se niega a arrancar | `HOSTNAME:PORT` (por defecto `127.0.0.1:3000`) | Es el borde público. Reenvía `/api/auth/*` y `/v1/*` a la API (`API_URL`, que se fija al compilar) |
 
 ## Cadena de confianza de la IP del cliente

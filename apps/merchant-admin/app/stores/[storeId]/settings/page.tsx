@@ -1,9 +1,11 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { centsToInput, parseMoney } from '@/lib/money';
 import { api, humanError } from '@/lib/api';
 import { useStore } from '@/lib/store-context';
 import { region } from '@/lib/labels';
 import { Button, Card, Field, Input, Notice, PageHeader, Select, SettingsSection } from '@/components/ui';
+import { DesignSettings, PaymentsSettings } from './sections';
 
 const CAPS: [string, string, string][] = [
   ['physical-products', 'Productos físicos', 'Artículos que se envían o se recogen.'],
@@ -78,6 +80,77 @@ export default function Settings() {
           <Button type="submit" disabled={!dirty || busy}>Guardar cambios</Button>
         </div>
       </form>
+      <SalesSettings />
+      <PaymentsSettings />
+      <DesignSettings />
     </div>
+  );
+}
+
+type Sales = { storefrontPublished: boolean; slug: string; shippingFlatAmount: number; freeShippingThreshold: number | null; contactEmail: string | null; taxRateBp: number | null; pricesIncludeTax: boolean };
+
+/** Venta online: publicar la tienda, envío, IVA y email de avisos. Formulario propio con su botón de guardar. */
+function SalesSettings() {
+  const { store } = useStore();
+  const [s, setS] = useState<Sales | null>(null);
+  const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({ published: false, shipping: '', freeOver: '', email: '', tax: '' });
+
+  useEffect(() => {
+    api<Sales>(`/v1/stores/${store.id}/sales-settings`).then((r) => {
+      setS(r);
+      setForm({ published: r.storefrontPublished, shipping: centsToInput(r.shippingFlatAmount), freeOver: centsToInput(r.freeShippingThreshold),
+        email: r.contactEmail ?? '', tax: r.taxRateBp === null ? '21' : String(r.taxRateBp / 100).replace('.', ',') });
+    }).catch((e) => setMsg({ kind: 'error', text: humanError(e) }));
+  }, [store.id]);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault(); setMsg(null);
+    const shipping = form.shipping.trim() ? parseMoney(form.shipping) : 0;
+    const freeOver = form.freeOver.trim() ? parseMoney(form.freeOver) : null;
+    const tax = Number(form.tax.replace(',', '.'));
+    if (shipping === null || (form.freeOver.trim() && freeOver === null)) return setMsg({ kind: 'error', text: 'Revisa los importes de envío (p. ej. 4,95).' });
+    if (!Number.isFinite(tax) || tax < 0 || tax > 100) return setMsg({ kind: 'error', text: 'El IVA debe ser un porcentaje entre 0 y 100.' });
+    setBusy(true);
+    try {
+      await api(`/v1/stores/${store.id}/sales-settings`, { method: 'PATCH', body: {
+        storefrontPublished: form.published, shippingFlatAmount: shipping, freeShippingThreshold: freeOver,
+        contactEmail: form.email.trim() || null, taxRateBp: Math.round(tax * 100), pricesIncludeTax: true,
+      } });
+      setS((x) => x && { ...x, storefrontPublished: form.published });
+      setMsg({ kind: 'success', text: form.published ? 'Guardado. Tu tienda está abierta al público.' : 'Guardado. Tu tienda no es visible para el público.' });
+    } catch (err) { setMsg({ kind: 'error', text: humanError(err) }); } finally { setBusy(false); }
+  }
+
+  if (!s) return msg ? <div className="mt-5"><Notice kind="error">{msg.text}</Notice></div> : null;
+  const url = store.storeUrl;
+  return (
+    <form onSubmit={save} className="mt-8 space-y-5" aria-label="Venta online">
+      <h2 className="text-lg font-semibold tracking-tight">Venta online</h2>
+      {msg && <Notice kind={msg.kind} onDismiss={() => setMsg(null)}>{msg.text}</Notice>}
+      <Card>
+        <SettingsSection title="Tu tienda online" description={<>Cuando la publiques, cualquiera podrá verla y comprar en <a className="text-accent-text hover:underline" href={url} target="_blank" rel="noreferrer">{url}</a>.</>}>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input type="checkbox" checked={form.published} onChange={(e) => setForm({ ...form, published: e.target.checked })} className="peer sr-only" />
+            <span aria-hidden className="relative mt-0.5 h-5 w-9 shrink-0 rounded-full bg-border-strong transition-colors peer-checked:bg-accent peer-focus-visible:outline-2 peer-focus-visible:outline-accent after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-4" />
+            <span><span className="block text-[13px] font-medium">Tienda publicada</span><span className="block text-xs text-muted">Solo se muestran los productos en estado «Activo».</span></span>
+          </label>
+        </SettingsSection>
+        <SettingsSection title="Envío" description="Una tarifa fija por pedido. Opcionalmente, gratis a partir de un importe.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={`Tarifa de envío (${store.currency})`} hint="0 si el envío es gratis."><Input inputMode="decimal" value={form.shipping} onChange={(e) => setForm({ ...form, shipping: e.target.value })} placeholder="4,95" /></Field>
+            <Field label="Envío gratis desde" hint="Déjalo vacío si no aplica."><Input inputMode="decimal" value={form.freeOver} onChange={(e) => setForm({ ...form, freeOver: e.target.value })} placeholder="50,00" /></Field>
+          </div>
+        </SettingsSection>
+        <SettingsSection title="Impuestos" description="Tus precios incluyen el IVA. Se desglosa en el pedido.">
+          <Field label="IVA (%)" hint="En España, el tipo general es el 21 %."><Input inputMode="decimal" value={form.tax} onChange={(e) => setForm({ ...form, tax: e.target.value })} className="sm:max-w-[120px]" /></Field>
+        </SettingsSection>
+        <SettingsSection title="Avisos de pedidos" description="Te enviamos un email a esta dirección con cada venta.">
+          <Field label="Email de la tienda"><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="hola@mitienda.com" /></Field>
+        </SettingsSection>
+      </Card>
+      <div className="flex justify-end"><Button type="submit" disabled={busy}>{busy ? 'Guardando…' : 'Guardar venta online'}</Button></div>
+    </form>
   );
 }

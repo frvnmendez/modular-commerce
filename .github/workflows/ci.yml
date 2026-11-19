@@ -29,6 +29,8 @@ jobs:
       DATABASE_APP_PASSWORD: ci-app
       DATABASE_AUTH_PASSWORD: ci-auth
       DATABASE_OPS_PASSWORD: ci-ops
+      DATABASE_STOREFRONT_PASSWORD: ci-storefront
+      DATABASE_PAYMENTS_PASSWORD: ci-payments
       AUTH_SECRET: ci-only-secret-not-used-anywhere-else-000
       AUTH_RATE_LIMIT: "off"
     steps:

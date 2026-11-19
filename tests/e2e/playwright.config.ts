@@ -12,7 +12,8 @@ export const OUTBOX = fileURLToPath(new URL('./test-results/outbox.jsonl', impor
 rmSync(OUTBOX, { force: true });
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const env = { ...process.env, AUTH_RATE_LIMIT: 'on', TRUST_PROXY: '127.0.0.1', PANEL_TRUST_PROXY: '', MAIL_OUTBOX_FILE: OUTBOX,
-  AUTH_BASE_URL: 'http://localhost:3000', ALLOWED_ORIGINS: 'http://localhost:3000' } as Record<string, string>;
+  AUTH_BASE_URL: 'http://localhost:3000', ALLOWED_ORIGINS: 'http://localhost:3000',
+  PAYMENTS_PROVIDER: 'fake', STRIPE_SECRET_KEY: '', PLATFORM_DOMAIN: 'plataforma.test', SMTP_URL: '', UPLOAD_DIR: fileURLToPath(new URL('./test-results/uploads', import.meta.url)) } as Record<string, string>;
 
 export default defineConfig({
   testDir: './specs',
@@ -21,7 +22,11 @@ export default defineConfig({
   retries: 0,
   timeout: 60_000,
   reporter: [['list'], ['html', { open: 'never' }]],
-  use: { baseURL: 'http://localhost:3000', trace: 'retain-on-failure', screenshot: 'only-on-failure' },
+  use: {
+    baseURL: 'http://localhost:3000', trace: 'retain-on-failure', screenshot: 'only-on-failure',
+    // Tiendas en subdominio (Hito 2): <slug>.plataforma.test resuelve a esta máquina.
+    launchOptions: { args: ['--host-resolver-rules=MAP *.plataforma.test 127.0.0.1, MAP plataforma.test 127.0.0.1'] },
+  },
   webServer: [
     { command: 'node apps/commerce-api/src/server.ts', cwd: root, env: { ...env, PORT: '4000', HOST: '127.0.0.1' },
       url: 'http://127.0.0.1:4000/health', reuseExistingServer: false, stdout: 'pipe', timeout: 30_000 },
