@@ -9,15 +9,18 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { NotFoundError, isUuid, withPayments, withStorefront } from '@mc/db';
-import { createStripeCheckout, refundStripePayment, verifyStripeSignature, type CheckoutOrder, type PaymentsConfig } from './payments.ts';
+import { ConflictError, NotFoundError, isUuid, withPayments, withStorefront } from '@mc/db';
+import { accountStatusFromEvent, createStripeCheckout, refundStripePayment, verifyStripeSignature, type CheckoutOrder, type PaymentsConfig } from './payments.ts';
+import type { Mail } from './mailer.ts';
 
-export type OrderMail = { kind: 'order-confirmation' | 'new-order'; to: string; subject: string; url: string; text: string };
+export type OrderMail = Mail;
 export type StorefrontOptions = {
   uploadDir: string;
   payments: PaymentsConfig;
   /** URL pública del panel/escaparate (p. ej. https://tuplataforma.com). Para los enlaces de vuelta del pago. */
   publicUrl: string;
+  /** Dominio de la plataforma para las tiendas en subdominio (<slug>.tuplataforma.com). Sin él: /tienda/<slug>. */
+  platformDomain?: string;
   sendMail?: (m: OrderMail) => Promise<void>;
   /** Compras (y pagos simulados) por IP y minuto. */
   checkoutRateLimit?: number;
@@ -51,6 +54,12 @@ type OrderJson = {
   result?: string;
 };
 
+/** Dirección pública de una tienda: su subdominio si hay dominio de plataforma, si no /tienda/<slug>. */
+export function storeBaseUrl(publicUrl: string, platformDomain: string | undefined, slug: string) {
+  if (!platformDomain) return `${publicUrl}/tienda/${slug}`;
+  return `${new URL(publicUrl).protocol}//${slug}.${platformDomain}`;
+}
+
 /** Importes a número (céntimos, < 2^53) y sin datos internos para el navegador. */
 function publicOrder(o: OrderJson) {
   return {
@@ -74,15 +83,19 @@ export async function storefrontRoutes(app: FastifyInstance, opts: StorefrontOpt
   const tooMany = (req: FastifyRequest, limiter: (k: string) => boolean) => {
     if (!limiter(req.ip)) throw Object.assign(new Error('RATE_LIMITED'), { statusCode: 429 });
   };
-  const thanksUrl = (slug: string, orderId: string, token: string) =>
-    `${opts.publicUrl}/tienda/${slug}/pedido/${orderId}?t=${token}`;
+  const storeUrl = (slug: string) => storeBaseUrl(opts.publicUrl, opts.platformDomain, slug);
+  const thanksUrl = (slug: string, orderId: string, token: string) => `${storeUrl(slug)}/pedido/${orderId}?t=${token}`;
+  const connect = opts.payments.provider === 'stripe' && opts.payments.connect ? opts.payments.connect : null;
+  const isConnected = async (orderId: string) =>
+    (await withPayments((c) => c.query('SELECT payments.order_account($1) AS a', [orderId]))).rows[0].a !== null;
 
   async function notifyPaid(o: OrderJson, token: string | null) {
     if (!opts.sendMail) return;
     const p = publicOrder(o);
-    const url = token ? thanksUrl(o.storeSlug, o.orderId, token) : `${opts.publicUrl}/tienda/${o.storeSlug}`;
+    const url = token ? thanksUrl(o.storeSlug, o.orderId, token) : storeUrl(o.storeSlug);
     const text = orderText(p);
-    await opts.sendMail({ kind: 'order-confirmation', to: o.email, subject: `${o.storeName}: pedido #${o.number} confirmado`, url, text }).catch(() => {});
+    await opts.sendMail({ kind: 'order-confirmation', to: o.email, subject: `${o.storeName}: pedido #${o.number} confirmado`, url, text,
+      fromName: o.storeName }).catch(() => {});
     if (o.contactEmail) {
       await opts.sendMail({ kind: 'new-order', to: o.contactEmail, subject: `Nuevo pedido #${o.number} en ${o.storeName}`,
         url: `${opts.publicUrl}/stores/${o.storeId}/orders/${o.orderId}`, text }).catch(() => {});
@@ -148,6 +161,11 @@ export async function storefrontRoutes(app: FastifyInstance, opts: StorefrontOpt
     tooMany(req, checkoutLimit);
     const { slug } = z.object({ slug: SLUG }).parse(req.params);
     const body = Checkout.parse(req.body);
+    // Con Stripe Connect, la tienda tiene que haber terminado el alta en Stripe antes de vender (no se reserva stock).
+    const account = connect
+      ? (await withStorefront((c) => c.query('SELECT storefront.payment_account($1) AS a', [slug]))).rows[0].a as string | null
+      : null;
+    if (connect && !account) throw new ConflictError('PAYMENTS_NOT_READY');
     const orderId = uuidv7();
     const token = randomBytes(24).toString('base64url');
     const provider = opts.payments.provider;
@@ -164,14 +182,14 @@ export async function storefrontRoutes(app: FastifyInstance, opts: StorefrontOpt
       shippingTotal: p.shippingTotal, taxTotal: p.taxTotal, pricesIncludeTax: p.pricesIncludeTax, lines: p.lines };
     let session;
     try {
-      session = await createStripeCheckout(opts.payments, co, { success: thanks, cancel: `${opts.publicUrl}/tienda/${slug}/carrito?cancelado=1` },
-        new Date(Date.now() + STRIPE_SESSION_SECONDS * 1000));
+      session = await createStripeCheckout(opts.payments, co, { success: thanks, cancel: `${storeUrl(slug)}/carrito?cancelado=1` },
+        new Date(Date.now() + STRIPE_SESSION_SECONDS * 1000), account);
     } catch (e) {
       req.log.error({ err: e, orderId }, 'no se pudo crear la sesión de pago');
       // El pedido queda pendiente y su reserva caduca sola (expire_overdue).
       throw Object.assign(new Error('PAYMENT_UNAVAILABLE'), { statusCode: 502 });
     }
-    await withStorefront((c) => c.query('SELECT storefront.attach_payment_session($1, $2)', [orderId, session.id]));
+    await withStorefront((c) => c.query('SELECT storefront.attach_payment_session($1, $2, $3)', [orderId, session.id, account]));
     return reply.code(201).send({ orderId, redirectUrl: session.url, order: p });
   });
 
@@ -220,7 +238,7 @@ export async function storefrontRoutes(app: FastifyInstance, opts: StorefrontOpt
         if (r.result === 'paid') await notifyPaid(r, null);
         if (r.result === 'late' && s.payment_intent) {
           // Se pagó después de liberar la reserva: se devuelve el dinero automáticamente.
-          await refundStripePayment(cfg, String(s.payment_intent), `late-refund-${orderId}`);
+          await refundStripePayment(cfg, String(s.payment_intent), `late-refund-${orderId}`, await isConnected(orderId));
           await withPayments((c) => c.query('SELECT payments.record_refund($1, $2)', [orderId, `late-refund-${event.id}`]));
           req.log.warn({ orderId }, 'pago tardío reembolsado');
         }
@@ -233,6 +251,37 @@ export async function storefrontRoutes(app: FastifyInstance, opts: StorefrontOpt
       }
       return { received: true, ignored: event.type };
     });
+
+    // Avisos de las cuentas conectadas (endpoint «Connect» en Stripe, con su propio secreto): estado del alta.
+    sub.post('/webhooks/stripe/connect', async (req, reply) => {
+      const secret = opts.payments.provider === 'stripe' ? opts.payments.connect?.webhookSecret : undefined;
+      if (!secret) throw new NotFoundError();
+      const raw = req.body as Buffer;
+      const event = Buffer.isBuffer(raw) ? verifyStripeSignature(raw, req.headers['stripe-signature'] as string | undefined, secret) : null;
+      if (!event) return reply.code(400).send({ error: 'INVALID_SIGNATURE' });
+      if (event.type !== 'account.updated') return { received: true, ignored: event.type };
+      const a = event.data?.object ?? {};
+      const st = accountStatusFromEvent(a);
+      const tenant = (await withPayments((c) => c.query('SELECT payments.update_account($1, $2, $3, $4) AS t',
+        [String(a.id ?? ''), st.chargesEnabled, st.detailsSubmitted, st.payoutsEnabled]))).rows[0].t;
+      req.log.info({ account: a.id, tenant, ...st }, 'estado de cuenta de cobro');
+      return { received: true, known: tenant !== null };
+    });
+  });
+
+  // --- Comprobación para el certificado HTTPS bajo demanda (Caddy «on_demand_tls ask») --------------------
+  // Solo responde 200 para el dominio de la plataforma y los subdominios de tiendas publicadas. El panel no
+  // reenvía /internal, y la API solo escucha en 127.0.0.1: no es accesible desde Internet.
+  app.get('/internal/tls-check', async (req, reply) => {
+    const { domain } = z.object({ domain: z.string().max(253) }).parse(req.query);
+    const d = domain.toLowerCase();
+    const root = opts.platformDomain?.toLowerCase();
+    if (!root) return reply.code(404).send({ ok: false });
+    if (d === root || d === `www.${root}`) return { ok: true };
+    const m = d.endsWith(`.${root}`) ? d.slice(0, -root.length - 1) : null;
+    if (!m || !SLUG.safeParse(m).success) return reply.code(404).send({ ok: false });
+    const ok = await withStorefront((c) => c.query('SELECT storefront.get_store($1) AS s', [m])).then(() => true, () => false);
+    return ok ? { ok: true } : reply.code(404).send({ ok: false });
   });
 }
 

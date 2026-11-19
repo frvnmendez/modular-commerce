@@ -8,14 +8,14 @@ import type { OrderMail } from '../src/storefront.ts';
 
 process.env.AUTH_RATE_LIMIT ??= 'off';
 
-export function makeApp(extra: Partial<Pick<AppOptions, 'payments' | 'uploadDir' | 'checkoutRateLimit'>> = {}) {
+export function makeApp(extra: Partial<Pick<AppOptions, 'payments' | 'uploadDir' | 'checkoutRateLimit' | 'platformDomain'>> = {}) {
   const outbox: MailMessage[] = [];
   const orderMail: OrderMail[] = [];
   const auth = createAuth({ mailer: async (m) => { outbox.push(m); }, baseURL: 'http://localhost:4000', secret: 'test-secret-'.padEnd(40, 'x'), trustedOrigins: ['http://localhost:3000'] });
   const app = buildApp({
     auth, allowedOrigins: ['http://localhost:3000'], logger: process.env.TEST_LOG === '1' ? undefined : false, publicUrl: 'http://localhost:3000',
     uploadDir: extra.uploadDir ?? mkdtempSync(join(tmpdir(), 'mc-uploads-')), payments: extra.payments ?? { provider: 'fake' },
-    sendMail: async (m) => { orderMail.push(m); }, checkoutRateLimit: extra.checkoutRateLimit ?? 1000,
+    sendMail: async (m) => { orderMail.push(m); }, checkoutRateLimit: extra.checkoutRateLimit ?? 1000, platformDomain: extra.platformDomain,
   });
   return { app, outbox, orderMail };
 }

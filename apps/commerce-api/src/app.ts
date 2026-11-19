@@ -25,6 +25,8 @@ export type AppOptions = {
   payments?: PaymentsConfig;
   /** URL pública del panel y del escaparate, para los enlaces de vuelta del pago y de los emails. */
   publicUrl?: string;
+  /** Dominio de la plataforma: las tiendas viven en <slug>.<dominio> (Hito 2). */
+  platformDomain?: string;
   sendMail?: (m: OrderMail) => Promise<void>;
   checkoutRateLimit?: number;
 };
@@ -43,7 +45,8 @@ const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
  */
 const isV1Route = (req: FastifyRequest) => req.routeOptions.url?.startsWith('/v1/') ?? false;
 const isPublicRoute = (req: FastifyRequest) => req.routeOptions.url?.startsWith('/public/') ?? false;
-const isImageUpload = (req: FastifyRequest) => req.method === 'POST' && req.routeOptions.url === '/v1/stores/:storeId/products/:productId/images';
+const IMAGE_UPLOAD_ROUTES = new Set(['/v1/stores/:storeId/products/:productId/images', '/v1/stores/:storeId/design/:slot']);
+const isImageUpload = (req: FastifyRequest) => req.method === 'POST' && IMAGE_UPLOAD_ROUTES.has(req.routeOptions.url ?? '');
 
 function requirePermission(role: StoreRole, p: Permission) {
   if (!can(role, p)) throw new ForbiddenError(`MISSING_PERMISSION:${p}`);
@@ -59,6 +62,18 @@ export function buildApp(opts: AppOptions) {
     trustProxy: opts.trustProxy ?? false,
   });
 
+  const platformDomain = opts.platformDomain?.toLowerCase();
+  const scheme = new URL(opts.publicUrl ?? opts.allowedOrigins[0] ?? 'http://localhost:3000').protocol;
+  const isStoreOrigin = (origin: string) => {
+    if (!platformDomain) return false;
+    try {
+      const u = new URL(origin);
+      return u.protocol === scheme && u.port === '' && u.origin === origin
+        && /^[a-z0-9](?:[a-z0-9-]{1,46}[a-z0-9])$/.test(u.hostname.slice(0, -platformDomain.length - 1))
+        && u.hostname.endsWith(`.${platformDomain}`) && u.hostname.split('.').length === platformDomain.split('.').length + 1;
+    } catch { return false; }
+  };
+
   // Cabeceras de seguridad básicas para una API JSON.
   app.addHook('onSend', async (_req, reply) => {
     reply.header('x-content-type-options', 'nosniff');
@@ -70,7 +85,9 @@ export function buildApp(opts: AppOptions) {
   app.addHook('onRequest', async (req, reply) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return;
     const origin = req.headers.origin;
-    if (origin && !opts.allowedOrigins.includes(origin)) return reply.code(403).send({ error: 'ORIGIN_NOT_ALLOWED' });
+    // El escaparate de una tienda en su subdominio (https://<slug>.<dominio>) solo puede llamar a /public.
+    const storeOrigin = !!origin && isPublicRoute(req) && isStoreOrigin(origin);
+    if (origin && !storeOrigin && !opts.allowedOrigins.includes(origin)) return reply.code(403).send({ error: 'ORIGIN_NOT_ALLOWED' });
     const type = req.headers['content-type']?.split(';')[0]?.trim().toLowerCase();
     // Subida de imágenes: el cuerpo es el fichero. Como no es JSON, se exige además un Origin permitido.
     if (isImageUpload(req)) {
@@ -151,9 +168,11 @@ export function buildApp(opts: AppOptions) {
   // --- Núcleo de venta (Hito 1) --------------------------------------------------------------
   const uploadDir = opts.uploadDir ?? './uploads';
   const payments: PaymentsConfig = opts.payments ?? { provider: 'fake' };
-  app.register(async (inst) => commerceRoutes(inst, { uploadDir, payments, tokenOf: (req) => user(req).token }));
+  const publicUrl = opts.publicUrl ?? opts.allowedOrigins[0] ?? 'http://localhost:3000';
+  app.register(async (inst) => commerceRoutes(inst, { uploadDir, payments, publicUrl, platformDomain, sendMail: opts.sendMail,
+    tokenOf: (req) => user(req).token }));
   app.register(async (inst) => storefrontRoutes(inst, {
-    uploadDir, payments, publicUrl: opts.publicUrl ?? opts.allowedOrigins[0] ?? 'http://localhost:3000', sendMail: opts.sendMail,
+    uploadDir, payments, publicUrl, platformDomain, sendMail: opts.sendMail,
     checkoutRateLimit: opts.checkoutRateLimit,
   }));
 

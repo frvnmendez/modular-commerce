@@ -388,6 +388,7 @@ describe('Venta (Hito 1): catálogo, pedidos y escaparate de otra tienda', () =>
       for (const url of [
         `/v1/stores/${B.storeId}/products`, `/v1/stores/${B.storeId}/products/${B.productId}`, `/v1/stores/${B.storeId}/orders`,
         `/v1/stores/${B.storeId}/orders/${B.orderId}`, `/v1/stores/${B.storeId}/sales-settings`,
+        `/v1/stores/${B.storeId}/payments`, `/v1/stores/${B.storeId}/design`,
         `/v1/stores/${A.storeId}/products/${B.productId}`, `/v1/stores/${A.storeId}/orders/${B.orderId}`,
       ]) {
         const r = await actor.call('GET', url);
@@ -405,6 +406,8 @@ describe('Venta (Hito 1): catálogo, pedidos y escaparate de otra tienda', () =>
       ['DELETE', `/v1/stores/${A.storeId}/products/${B.productId}`],
       ['POST', `/v1/stores/${B.storeId}/products`, body],
       ['PATCH', `/v1/stores/${B.storeId}/sales-settings`, { storefrontPublished: false }],
+      ['PATCH', `/v1/stores/${B.storeId}/design`, { headline: 'Hackeado', accentColor: '#000000' }],
+      ['DELETE', `/v1/stores/${B.storeId}/design/logo`],
       ['POST', `/v1/stores/${A.storeId}/orders/${B.orderId}/cancel`, {}],
       ['POST', `/v1/stores/${B.storeId}/orders/${B.orderId}/cancel`, {}],
       ['POST', `/v1/stores/${A.storeId}/orders/${B.orderId}/refund`, {}],
@@ -421,6 +424,10 @@ describe('Venta (Hito 1): catálogo, pedidos y escaparate de otra tienda', () =>
       headers: { cookie: A.owner.cookie, origin: 'http://localhost:3000', 'content-type': 'image/png' },
       payload: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(16)]) });
     expect(img.statusCode).toBe(404);
+    const logo = await h.app.inject({ method: 'POST', url: `/v1/stores/${B.storeId}/design/logo`,
+      headers: { cookie: A.owner.cookie, origin: 'http://localhost:3000', 'content-type': 'image/png' },
+      payload: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(16)]) });
+    expect(logo.statusCode).toBe(404);
   });
 
   it('el escaparate de A no vende, enseña ni resume nada de B', async () => {

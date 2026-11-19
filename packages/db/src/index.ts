@@ -39,7 +39,7 @@ export class BadRequestError extends Error {
 
 /** Traduce errores de las funciones SQL a errores de dominio. */
 export function mapDbError(e: unknown): never {
-  const err = e as { code?: string; message?: string };
+  const err = e as { code?: string; message?: string; constraint?: string };
   const msg = err.message ?? '';
   // Solo se traducen los errores de dominio que lanzan nuestras funciones (mensajes en MAYÚSCULAS).
   // Un "permission denied" real de Postgres es un bug de privilegios y debe aflorar como 500.
@@ -48,6 +48,7 @@ export function mapDbError(e: unknown): never {
   if (err.code === '42501' && domain) throw new ForbiddenError(msg);
   if (err.code === '23505') throw new ConflictError('DUPLICATE');
   if (err.code === '23514' && domain) throw new ConflictError(msg);
+  if (err.code === '23514' && err.constraint === 'stores_slug_not_reserved') throw new ConflictError('SLUG_RESERVED');
   if (err.code === '22023' && domain) throw new BadRequestError(msg);
   if (err.code === '22P02') throw new BadRequestError('INVALID_INPUT');   // p. ej. un uuid mal formado dentro de un JSON
   throw e;
